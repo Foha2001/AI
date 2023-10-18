@@ -67,6 +67,7 @@ my_function <- function(column) {
   column <- ifelse(is.na(column), mean(column, na.rm = TRUE), column)
   return(column)
 }
+
 subset_df_filled <- lapply(subset_df, function(x) {
   if(is.numeric(x)) {
     # Apply the function only to numeric columns
@@ -84,18 +85,44 @@ export(mytable)
 
 
 #-------------NARX model-------------------
-train_size <- floor(0.7 * nrow(subset_df))
-train_data <- subset_df[1:train_size, -1]
-test_data <- subset_df[(train_size + 1):nrow(subset_df),-1]
-narx_model <- nnet(wti ~ TB+LTY+I+SRV+GOP+GIPIO+M2+EPI+IPI+UMP+EEPH+TEMP+
-                     co2_per_capita+solarpv+solarthermal+solarpvthermalhybrid+
-                     wind+hydropower+marineandtidal+bioenergy+geothermal+
-                     bioenergyLCOE+geothermalLCOE+offshorewindLCOE+
-                     solarphotovoltaicLCOE+concentratedsolarLCOE+hydropowerLCOE+
-                     onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+GR
-                   , data = train_data, size = 20,
-                   na.action = na.omit,linout = TRUE)
-predictions <- predict(narx_model, newdata = test_data)
+
+train_size <- floor(0.7 * nrow(subset_df_filled_xts))
+train_data <- subset_df_filled_xts[1:train_size,]
+test_data <- subset_df_filled_xts[(train_size + 1):nrow(subset_df_filled_xts),]
+ind_test = index(test_data)
+wti <- subset_df_filled_xts$wti
+gas <- subset_df_filled_xts$GP
+coal<- subset_df_filled_xts$coal
+macro_fact<- subset_df_filled_xts[,c(11,1,2,3,4,5,6,7,9,10)]
+with_env_fac <- subset_df_filled_xts[,c(11,1,2,3,4,5,6,7,9,10,17,18,19,20,21,22,23,24,25,26,27,28,29,30,
+                                    31,32,33,34,15,16)]
+
+
+#predict wti without tech-envt variables*****####
+
+model_wti = narx(train_data$wti, SimpleLM, p = 2,xreg = macro_fact)
+pred_wti = forecast(model_wti,xreg=macro_fact[ind_test])
+
+#predict wti with tech-envt variables*****####
+model_wti_env = narx(train_data$wti, SimpleLM, p = 2,xreg = with_env_fac)
+pred_wti_env = forecast(model_wti_env,xreg=with_env_fac[ind_test])
+
+
+
+
+rmse <- function(x,y) sqrt(mean((x-y)^2))
+
+c(Err_without_xreg= rmse(pred1$mean, test_data),
+  Err_with_xreg= rmse(pred2$mean, x_test),
+  Err_with_bad_xreg= rmse(pred3$mean, x_test))
+
+
+
+
+
+
+
+
 
 
 
