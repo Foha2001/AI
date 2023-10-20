@@ -11,6 +11,9 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(fdesc)
+library(mltsp)
+library(e1071)
+library(flexsurv)
 #import data-----
 excel_file <- "C:/Users/Foued Azuz 14/OneDrive/AI energy/dataset.xlsx"
 sheet_names <- excel_sheets(excel_file)
@@ -86,35 +89,54 @@ export(mytable)
 
 #-------------NARX model-------------------
 
-train_size <- floor(0.7 * nrow(subset_df_filled_xts))
+train_size <- floor(0.8 * nrow(subset_df_filled_xts))
 train_data <- subset_df_filled_xts[1:train_size,]
 test_data <- subset_df_filled_xts[(train_size + 1):nrow(subset_df_filled_xts),]
 ind_test = index(test_data)
 wti <- subset_df_filled_xts$wti
 gas <- subset_df_filled_xts$GP
 coal<- subset_df_filled_xts$coal
-macro_fact<- subset_df_filled_xts[,c(11,1,2,3,4,5,6,7,9,10)]
-with_env_fac <- subset_df_filled_xts[,c(11,1,2,3,4,5,6,7,9,10,17,18,19,20,21,22,23,24,25,26,27,28,29,30,
-                                    31,32,33,34,15,16)]
+macro_fact<- subset_df_filled_xts[,c(4,5,6,7,8,9,10,12,13,14)]
+with_RE_fac <- subset_df_filled_xts[,c(25,26,27,28,29,30,31,32,33,34)]
+with_ENV_fac <- subset_df_filled_xts[,c(15,16)]
+with_tech_fac <- subset_df_filled_xts[,c(17,18,19,20,21,22,23,24)]
+with_pol_fac <- subset_df_filled_xts[,c(11,35)]
+
+#predict wti without  variables*****####
+model_wti = narx(train_data$wti, SimpleLM, p = 2)
+pred_wti = forecast(model_wti,h=1126)
 
 
-#predict wti without tech-envt variables*****####
+model_wti_macr = narx(train_data$wti, SimpleLM, p = 2,xreg=macro_fact)
+pred_wti_macr = forecast(model_wti_macr,xreg=macro_fact[ind_test])
 
-model_wti = narx(train_data$wti, SimpleLM, p = 2,xreg = macro_fact)
-pred_wti = forecast(model_wti,xreg=macro_fact[ind_test])
+#predict wti with RE factors *****####
+model_wti_RE = narx(train_data$wti, SimpleLM, p = 2,xreg = with_RE_fac)
+pred_wti_RE = forecast(model_wti_RE,xreg=with_RE_fac[ind_test])
 
-#predict wti with tech-envt variables*****####
-model_wti_env = narx(train_data$wti, SimpleLM, p = 2,xreg = with_env_fac)
-pred_wti_env = forecast(model_wti_env,xreg=with_env_fac[ind_test])
+#predict wti with ENV factors *****####
+model_wti_ENV = narx(train_data$wti, SimpleLM, p = 2,xreg = with_ENV_fac)
+pred_wti_ENV = forecast(model_wti_ENV,xreg=with_ENV_fac[ind_test])
+
+#predict wti with TECH factors *****####
+model_wti_TECH = narx(train_data$wti, SimpleLM, p = 2,xreg = with_tech_fac)
+pred_wti_TECH = forecast(model_wti_TECH,xreg=with_tech_fac[ind_test])
 
 
+#predict wti with TECH factors *****####
+model_wti_pol = narx(train_data$wti, SimpleLM, p = 2,xreg = with_pol_fac)
+pred_wti_pol = forecast(model_wti_pol,xreg=with_pol_fac[ind_test])
 
 
 rmse <- function(x,y) sqrt(mean((x-y)^2))
+# sigmoid_value <- function (x) 1 / (1 + exp(-x))
 
-c(Err_without_xreg= rmse(pred1$mean, test_data),
-  Err_with_xreg= rmse(pred2$mean, x_test),
-  Err_with_bad_xreg= rmse(pred3$mean, x_test))
+c(Err_without_xreg= rmse(pred_wti$mean, test_data$wti),
+  Err_with_xreg_macr= rmse(pred_wti_macr$mean, test_data$wti),
+  Err_with_xreg_RE= rmse(pred_wti_RE$mean, test_data$wti),
+  Err_with_xreg_ENV= rmse(pred_wti_ENV$mean, test_data$wti),
+  Err_with_xreg_TECH= rmse(pred_wti_TECH$mean, test_data$wti),
+  Err_with_xreg_POL= rmse(pred_wti_pol$mean, test_data$wti))
 
 
 
