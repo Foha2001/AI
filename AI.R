@@ -68,20 +68,34 @@ end_date <- as.Date("2023-07-24")
 mask <- merged_df$date >= start_date & merged_df$date <= end_date
 subset_df <- merged_df[mask, ]
 subset_df_xts<-as.xts(subset_df)
-
-#replace missing values with the values in the end of year  repete for every column
-zoosolarphotovoltaicLCOE<-zoo(subset_df[, "solarphotovoltaicLCOE"], order.by = subset_df$date)
-filled_zoosolarphotovoltaicLCOE <- na.locf(zoosolarphotovoltaicLCOE, fromLast = TRUE)
-filled_df <- data.frame(Date = index(filled_zoosolarphotovoltaicLCOE), 
-                        solarphotovoltaicLCOE = coredata(filled_zoosolarphotovoltaicLCOE))
-colnames(filled_df)<-c("date","solarphotovoltaicLCOE")
+#Replace missing value#####
+#replace missing values with the values in the end of year  repeate for every column
+zoogeothermal<-zoo(subset_df[, "geothermal"],
+                              order.by = subset_df$date)
+filled_zoogeothermal <- na.locf(zoogeothermal,
+                                           fromLast = TRUE)
+filled_df <- data.frame(Date = index(filled_zoogeothermal), 
+                        geothermal = 
+                          coredata(filled_zoogeothermal))
+colnames(filled_df)<-c("date","geothermal")
 
 subset_df <- merge(subset_df, filled_df, by = "date", all.x = TRUE)
-subset_df$solarphotovoltaicLCOE.x<- NULL
-subset_df$solarphotovoltaicLCOE<-subset_df$solarphotovoltaicLCOE.y
-subset_df$solarphotovoltaicLCOE.y<- NULL
+subset_df$geothermal.x<- NULL
+subset_df$geothermal<-subset_df$geothermal.y
+subset_df$geothermal.y<- NULL
+copysubset_df<-subset_df
 #end
+#replace for missing month
 
+subset_df <- subset_df %>%
+  mutate(date = as.Date(date, format = "%Y-%m-%d")) %>%
+  group_by(year = format(date, "%Y"), month = format(date, "%m")) %>%
+  mutate(UMP = ifelse(is.na(UMP), first(UMP, na_rm = TRUE), UMP)) %>%
+  ungroup()
+
+
+
+################
 
 my_function <- function(column) {
   column <- ifelse(is.na(column), mean(column, na.rm = TRUE), column)
