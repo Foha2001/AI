@@ -1,56 +1,111 @@
-library("fpp")
-library("e1071")
-beer_train = head(ausbeer, -20)
-beer_test = head(tail(ausbeer, 20), 10)
 
-library("mltsp")
+#using neuralnet---------------------
+install.packages("neuralnet")
+library(neuralnet)
+# Load the neuralnet package
+library(neuralnet)
 
-spec = build_narx(svm, p=2, d=0, P=1, D=1, freq=frequency(ausbeer))
-model = narx(spec, beer_train)
+# Generate synthetic time series data
+set.seed(123)
+n <- 100
+time <- 1:n
+target <- sin(time/10) + rnorm(n)
+exog1 <- rnorm(n)
+exog2 <- rnorm(n)
 
-model
+# Create lagged features for the NARX model
+lag1_target <- c(NA, head(target, -1))
+lag2_target <- c(NA, NA, head(target, -2))
 
+# Combine the data into a data frame
+data <- data.frame(time, target, exog1, exog2, lag1_target, lag2_target)
 
-fcst = forecast(model, h = 10)
-plot(fcst)
-lines(beer_test, col="red")
+# Split the data into training and testing sets
+train_frac <- 0.8
+train_idx <- 1:round(train_frac * n)
+test_idx <- (round(train_frac * n) + 1):n
+training_data <- data[train_idx, ]
+training_data <- na.omit(training_data)
+testing_data <- data[test_idx, ]
 
+# Define the NARX formula
+formula <- target ~ lag1_target + lag2_target + exog1 + exog2
 
-set.seed(0)
+# Create the NARX model
+model <- neuralnet(formula, data = training_data, hidden = c(5, 3),
+                   act.fct = "logistic", linear.output = TRUE)
 
-tstamps = seq(as.Date("2000-01-01"), length.out = 110, by='day')
-x = xts(runif(length(tstamps)), tstamps)
-xreg = 1 - 0.5 * x
-yreg = xts(runif(110), tstamps)
+# Plot the model
+plot(model)
 
-colnames(xreg) = colnames(yreg) = "xreg"
+# Train the model
+trained_model <- model
 
-# training and testing data
-x_train = head(x, 100)
-x_test = tail(x, 10)
-ind_test = index(x_test)
+# Make predictions on the test data
+predictions <- predict(trained_model, testing_data)
 
-model = narx(x_train, SimpleLM, p = 2)
-pred1 = forecast(model, h=10)
-
-model2 = narx(x_train, sigmoid, p = 2, xreg = xreg)
-pred2 = forecast(model2, xreg=xreg[ind_test])
-
-model3 = narx(x_train, SimpleLM, p = 2, xreg = yreg)
-pred3 = forecast(model3, xreg=yreg[ind_test])
-
-rmse <- function(x,y) sqrt(mean((x-y)^2))
-
-c(Err_without_xreg= rmse(pred1$mean, x_test),
-  Err_with_xreg= rmse(pred2$mean, x_test),
-  Err_with_bad_xreg= rmse(pred3$mean, x_test))
-
-
-
-
-
+# Evaluate the model (mean squared error)
+mse <- mean((predictions - testing_data$target)^2)
+cat("Mean Squared Error:", mse, "\n")
 
 
 
+# Assuming "true_values" are the true target values and "predictions" are the predicted values
+true_values <- testing_data$target  # Replace with the actual column name in your data
+
+# Calculate the squared differences
+squared_diff <- (true_values - predictions)^2
+
+# Calculate the mean squared difference
+mean_squared_diff <- mean(squared_diff)
+
+# Calculate RMSE by taking the square root of the mean squared difference
+rmse <- sqrt(mean_squared_diff)
+
+cat("Root Mean Squared Error (RMSE):", rmse, "\n")
 
 
+# Calculate the absolute differences
+abs_diff <- abs(true_values - predictions)
+
+# Calculate the mean absolute difference (MAD)
+mad <- mean(abs_diff)
+cat("Mean Absolute Deviation (MAD):", mad, "\n")
+
+
+# Calculate the correlation between true values and predictions
+correlation <- cor(true_values, predictions)
+
+# Calculate R-squared
+rsquared <- correlation^2
+
+cat("R-squared (R²):", rsquared, "\n")
+
+
+
+#using nnet package------------------
+# Load the forecast package
+library(forecast)
+
+# Generate synthetic time series data
+set.seed(123)
+n <- 100
+time <- 1:n
+target <- sin(time/10) + rnorm(n)
+exog1 <- rnorm(n)
+exog2 <- rnorm(n)
+
+# Create a time series object
+ts_data <- ts(target)
+
+# Create a data frame with exogenous inputs
+data <- data.frame(ts_data, exog1, exog2)
+data <-ts(data)
+# Create a NARX model with neural network
+narx_model <- nnetar(data, repeats = 1, size = c(5, 3))
+
+# Make predictions
+predictions <- forecast(narx_model, h = 10)
+
+# Print the forecasted values
+print(predictions)
