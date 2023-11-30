@@ -17,7 +17,7 @@ library(flexsurv)
 library(keras)
 library(neuralnet)
 library(zoo)
-#import data-----
+#************import data********************-----
 excel_file <- "C:/Users/Foued Azuz 14/OneDrive/AI energy/dataset.xlsx"
 sheet_names <- excel_sheets(excel_file)
 all_dataframes <- lapply(sheet_names, function(sheet) {
@@ -45,10 +45,10 @@ write_xlsx(merged_df, "file.xlsx")
 
 ecp <-na.omit(merged_df[,c(1,2,3,4)])  #energy commodities prices
 colnames(ecp)<- c("Date","OIL","GAS","Coal")
+
+
 df <- ecp %>%
   gather(key = "Variable", value = "value", -Date)
-
-
 ggplot(df, aes(x = Date, y = value, linetype = Variable)) + 
   geom_line(aes(color = Variable), size = 1) +
   scale_color_manual(values = c("#59504E", "#59504E", "#222222")) +
@@ -93,9 +93,10 @@ subset_df <- subset_df %>%
   mutate(UMP = ifelse(is.na(UMP), first(UMP, na_rm = TRUE), UMP)) %>%
   ungroup()
 
+subset_df<-subset_df[,-37,-38]
 
 
-################
+################function to replace missing value with mean value
 
 my_function <- function(column) {
   column <- ifelse(is.na(column), mean(column, na.rm = TRUE), column)
@@ -152,7 +153,7 @@ MAE <- function (true_values,predictions) {
 
 #----------------------------------------------------#
 
-#-------------NARX model using MLTSP-------------------
+#*************NARX model using MLTSP***********************----
 
 train_size <- floor(0.8 * nrow(subset_df_filled_xts))
 train_data <- subset_df_filled_xts[1:train_size,]
@@ -190,57 +191,62 @@ RMSE(pred_gp_without$mean, test_data$GP)
 Rsquared(pred_gp_without$mean, test_data$GP)
 MAE(test_data$GP,pred_gp_without$mean)
 
-#-------------NARX model using neuralnet-------------------
+#*************NARX model using neuralnet****************####
 exoge <-subset_df_filled_xts[,-1]
 lag1_target <- lag(subset_df_filled_xts$wti, 1)
 colnames(lag1_target) <- "wti1"
 lag2_target <- lag(subset_df_filled_xts$wti, 2)
 colnames(lag2_target) <- "wti2"
 time <- 1:6126
-data <- data.frame(time, wti, exoge, lag1_target, lag2_target)
+wti<-subset_df_filled_xts$wti
+data <- data.frame(wti, exoge, lag1_target, lag2_target)
 data <- na.omit(data)
-data<-scale(data)
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
 
+maxmindata <- as.data.frame(lapply(data, normalize))
 
-# Split the data into training and testing sets
+## Split the data into training and testing sets
 n<-6124
 train_frac <- 0.8
 train_idx <- 1:round(train_frac * n)
 test_idx <- (round(train_frac * n) + 1):n
-training_data <- data[train_idx, ]
-testing_data <- data[test_idx, ]
-# Define the NARX formula
+training_data <- maxmindata[train_idx,]
+testing_data <- maxmindata[test_idx,]
+##-------Define the NARX formula----------
 
 
-formula <- wti ~ wti1 + wti2 +GP+coal+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+
-  TEMP+co2_per_capita+solarpv+solarthermal+solarpvthermalhybrid+wind+
-  hydropower+marineandtidal+bioenergy+geothermal+bioenergyLCOE+geothermalLCOE+
-  offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
-  hydropowerLCOE+onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+
-  GR+EPI
+formula <- wti ~ wti1 + wti2 +GP+coal+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro factors
+  TEMP+co2_per_capita+#envt factors
+  solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
+  bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
+  hydropowerLCOE+onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+#renewable factors
+  GR+EPI# political factors
 
-formula <- wti ~ wti1+wti2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+
-  TEMP+co2_per_capita+GR+EPI
-
-
+formula <- wti ~ wti1+wti2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH+#macro factors
+ GP+coal 
 
 
+model <- neuralnet(formula, data = training_data, hidden =c(2,1), linear.output = FALSE)
 
-model <- neuralnet(formula, data = training_data, hidden = c(2,1),
-                   linear.output = FALSE,threshold = 0.01,rep = 10)
-                   
-
-model$
 plot(model)
-
-# Train the model
-trained_model <- model
-
-# Make predictions on the test data
+##------ Make predictions on the test data-----
 predictions <- predict(trained_model,testing_data)
-plot(predictions)
+pred<- as.data.frame(predictions)
+actual<- as.data.frame(testing_data)
+gpredictions<- cbind(actual$wti,pred)
+colnames(gpredictions)<- c("Observed values","Estimated values")
+plot(gpredictions,main='WTI')
+abline(0,1,lwd=2)
 
-RMSE(predictions,testing_data$wti)
+
+gpredictions_xts<-as.xts(gpredictions)
+gpredictions$Date <-index(gpredictions_xts)
+
+
+
+
 
 
 #------------------------------------------------------------------------------
