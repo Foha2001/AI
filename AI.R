@@ -231,20 +231,16 @@ formula <- wti ~ wti1+wti2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH+#macro factor
 model <- neuralnet(formula, data = training_data, hidden =c(2,1), linear.output = FALSE)
 
 plot(model)
+temp_test <- testing_data[,-1]
+
+
 ##------ Make predictions on the test data-----
-predictions <- predict(trained_model,testing_data)
-pred<- as.data.frame(predictions)
-actual<- as.data.frame(testing_data)
-gpredictions<- cbind(actual$wti,pred)
-colnames(gpredictions)<- c("Observed values","Estimated values")
-plot(gpredictions,main='WTI')
+predictions <- predict(model,temp_test)
+results <- data.frame(Observed_values = testing_data$wti, Estimated_values =predictions) 
+plot(results,main='WTI')
 abline(0,1,lwd=2)
 
-
-gpredictions_xts<-as.xts(gpredictions)
-gpredictions$Date <-index(gpredictions_xts)
-
-
+RMSE(results$Observed_values,results$Estimated_values)
 
 
 
