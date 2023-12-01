@@ -68,7 +68,11 @@ end_date <- as.Date("2023-07-24")
 mask <- merged_df$date >= start_date & merged_df$date <= end_date
 subset_df <- merged_df[mask, ]
 subset_df_xts<-as.xts(subset_df)
+<<<<<<< HEAD
 #Replace missing value#####
+=======
+
+>>>>>>> 95c0c62b26c24aa5f964cb9497fecbedc729b2fa
 #replace missing values with the values in the end of year  repeate for every column
 zoogeothermal<-zoo(subset_df[, "geothermal"],
                               order.by = subset_df$date)
@@ -83,6 +87,7 @@ subset_df <- merge(subset_df, filled_df, by = "date", all.x = TRUE)
 subset_df$geothermal.x<- NULL
 subset_df$geothermal<-subset_df$geothermal.y
 subset_df$geothermal.y<- NULL
+<<<<<<< HEAD
 copysubset_df<-subset_df
 #end
 #replace for missing month
@@ -97,6 +102,10 @@ subset_df<-subset_df[,-37,-38]
 
 
 ################function to replace missing value with mean value
+=======
+#end
+################
+>>>>>>> 95c0c62b26c24aa5f964cb9497fecbedc729b2fa
 
 my_function <- function(column) {
   column <- ifelse(is.na(column), mean(column, na.rm = TRUE), column)
@@ -228,7 +237,8 @@ formula <- wti ~ wti1+wti2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH+#macro factor
  GP+coal 
 
 
-model <- neuralnet(formula, data = training_data, hidden =c(2,1), linear.output = FALSE)
+model <- neuralnet(formula, data = training_data, hidden =c(3,2), linear.output = FALSE)
+                   
 
 plot(model)
 temp_test <- testing_data[,-1]
@@ -241,11 +251,13 @@ plot(results,main='WTI')
 abline(0,1,lwd=2)
 
 RMSE(results$Observed_values,results$Estimated_values)
+Rsquared(results$Observed_values,results$Estimated_values)
+MAE(results$Observed_values,results$Estimated_values)
 
 
 
 
-#------------------------------------------------------------------------------
+#---------------------------------END---------------------------------------------
 
 
 
