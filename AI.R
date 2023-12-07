@@ -17,6 +17,8 @@ library(flexsurv)
 library(keras)
 library(neuralnet)
 library(zoo)
+library(caret)
+library(NeuralNetTools)
 #************import data********************-----
 excel_file <- "C:/Users/Foued Azuz 14/OneDrive/AI energy/dataset.xlsx"
 sheet_names <- excel_sheets(excel_file)
@@ -68,11 +70,10 @@ end_date <- as.Date("2023-07-24")
 mask <- merged_df$date >= start_date & merged_df$date <= end_date
 subset_df <- merged_df[mask, ]
 subset_df_xts<-as.xts(subset_df)
-<<<<<<< HEAD
-#Replace missing value#####
-=======
 
->>>>>>> 95c0c62b26c24aa5f964cb9497fecbedc729b2fa
+#Replace missing value#####
+
+
 #replace missing values with the values in the end of year  repeate for every column
 zoogeothermal<-zoo(subset_df[, "geothermal"],
                               order.by = subset_df$date)
@@ -87,7 +88,7 @@ subset_df <- merge(subset_df, filled_df, by = "date", all.x = TRUE)
 subset_df$geothermal.x<- NULL
 subset_df$geothermal<-subset_df$geothermal.y
 subset_df$geothermal.y<- NULL
-<<<<<<< HEAD
+
 copysubset_df<-subset_df
 #end
 #replace for missing month
@@ -102,10 +103,10 @@ subset_df<-subset_df[,-37,-38]
 
 
 ################function to replace missing value with mean value
-=======
+
 #end
 ################
->>>>>>> 95c0c62b26c24aa5f964cb9497fecbedc729b2fa
+
 
 my_function <- function(column) {
   column <- ifelse(is.na(column), mean(column, na.rm = TRUE), column)
@@ -162,7 +163,7 @@ MAE <- function (true_values,predictions) {
 
 #----------------------------------------------------#
 
-#*************NARX model using MLTSP***********************----
+#NARX model using MLTSP#####
 
 train_size <- floor(0.8 * nrow(subset_df_filled_xts))
 train_data <- subset_df_filled_xts[1:train_size,]
@@ -200,7 +201,7 @@ RMSE(pred_gp_without$mean, test_data$GP)
 Rsquared(pred_gp_without$mean, test_data$GP)
 MAE(test_data$GP,pred_gp_without$mean)
 
-#*************NARX model using neuralnet****************####
+#NARX model using neuralnet####
 exoge <-subset_df_filled_xts[,-1]
 lag1_target <- lag(subset_df_filled_xts$wti, 1)
 colnames(lag1_target) <- "wti1"
@@ -236,14 +237,73 @@ formula <- wti ~ wti1 + wti2 +GP+coal+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#mac
 formula <- wti ~ wti1+wti2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH+#macro factors
  GP+coal 
 
+temp_test <- testing_data[,-1] # change this according to dependent variable
 
-model <- neuralnet(formula, data = training_data, hidden =c(3,2), linear.output = FALSE)
-                   
 
+## Choose the best model####
+
+library(caret)
+
+grid <-  expand.grid(layer1 = c(1, 2,3),
+                     layer2 = c(1, 2,3),
+                     layer3 = c(1,2,3))
+###with all variables
+nn <- train(formula, 
+            data = training_data, 
+            method = "neuralnet", 
+            tuneGrid = grid,
+            metric = "RMSE",
+            preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+            trControl = trainControl(
+              method = "cv",
+              number = 5,
+              verboseIter = TRUE)
+)
+nn  # find the best model
+plotnet(nn$finalModel)
+
+### with macro variables
+nn1 <- train(formula, 
+            data = training_data, 
+            method = "neuralnet", 
+            tuneGrid = grid,
+            metric = "RMSE",
+            preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+            trControl = trainControl(
+              method = "cv",
+              number = 5,
+              verboseIter = TRUE)
+)
+nn1
+plot(nn1)
+plotnet(nn1$finalModel)
+
+
+
+
+
+
+# 
+# 
+# 
+# layer_options <- c(1,2,3)
+# neuron_options <- c(1,2,3)
+# for (layers in layer_options) {
+#   for (neurons in neuron_options) {
+#     model <- neuralnet(formula, data = training_data, hidden = rep(layers,neurons), linear.output = FALSE)
+#     predictions <- predict(model, temp_test)
+#     rmse <- RMSE(testing_data$wti, predictions)
+#     R2 <- Rsquared(testing_data$wti, predictions)
+#     mae <- MAE(testing_data$wti, predictions)
+#     rm(model)
+#     rm(predictions)
+#    cat("------------------")
+#       } 
+# }
+
+## repeat the right model for graphic
+model <- neuralnet(formula, data = training_data, hidden =c(2,3), linear.output = FALSE)
 plot(model)
-temp_test <- testing_data[,-1]
-
-
 ##------ Make predictions on the test data-----
 predictions <- predict(model,temp_test)
 results <- data.frame(Observed_values = testing_data$wti, Estimated_values =predictions) 
@@ -253,6 +313,8 @@ abline(0,1,lwd=2)
 RMSE(results$Observed_values,results$Estimated_values)
 Rsquared(results$Observed_values,results$Estimated_values)
 MAE(results$Observed_values,results$Estimated_values)
+
+
 
 
 
