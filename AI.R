@@ -237,17 +237,25 @@ formula <- wti ~ wti1 + wti2 +GP+coal+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#mac
 formula <- wti ~ wti1+wti2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH+#macro factors
  GP+coal 
 
+formula <- wti ~ wti1 + wti2+TEMP+co2_per_capita+#envt factors
+  solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
+  bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
+  hydropowerLCOE+onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+#renewable factors
+  GR+EPI# political factors
+
+
+
 temp_test <- testing_data[,-1] # change this according to dependent variable
 
 
 ## Choose the best model####
 
-library(caret)
+
 
 grid <-  expand.grid(layer1 = c(1, 2,3),
                      layer2 = c(1, 2,3),
                      layer3 = c(1,2,3))
-###with all variables
+###with all variables####
 nn <- train(formula, 
             data = training_data, 
             method = "neuralnet", 
@@ -259,10 +267,9 @@ nn <- train(formula,
               number = 5,
               verboseIter = TRUE)
 )
-nn  # find the best model
-plotnet(nn$finalModel)
 
-### with macro variables
+
+### with macro variables####
 nn1 <- train(formula, 
             data = training_data, 
             method = "neuralnet", 
@@ -274,48 +281,60 @@ nn1 <- train(formula,
               number = 5,
               verboseIter = TRUE)
 )
-nn1
-plot(nn1)
-plotnet(nn1$finalModel)
 
+### with without macro economic factors ####
+
+nn3 <- train(formula, 
+             data = training_data, 
+             method = "neuralnet", 
+             tuneGrid = grid,
+             metric = "RMSE",
+             preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+             trControl = trainControl(
+               method = "cv",
+               number = 5,
+               verboseIter = TRUE)
+)
+
+
+### plot the model #####
+
+plot(nn3)
+
+tiff("nn.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
+plotnet(nn$finalModel,cex_val =0.5)
+dev.off()
 
 
 
 
 
 # 
+# predictions <- predict(nn3, newdata = testing_data)
 # 
 # 
-# layer_options <- c(1,2,3)
-# neuron_options <- c(1,2,3)
-# for (layers in layer_options) {
-#   for (neurons in neuron_options) {
-#     model <- neuralnet(formula, data = training_data, hidden = rep(layers,neurons), linear.output = FALSE)
-#     predictions <- predict(model, temp_test)
-#     rmse <- RMSE(testing_data$wti, predictions)
-#     R2 <- Rsquared(testing_data$wti, predictions)
-#     mae <- MAE(testing_data$wti, predictions)
-#     rm(model)
-#     rm(predictions)
-#    cat("------------------")
-#       } 
-# }
-
-## repeat the right model for graphic
-model <- neuralnet(formula, data = training_data, hidden =c(2,3), linear.output = FALSE)
-plot(model)
-##------ Make predictions on the test data-----
-predictions <- predict(model,temp_test)
-results <- data.frame(Observed_values = testing_data$wti, Estimated_values =predictions) 
-plot(results,main='WTI')
-abline(0,1,lwd=2)
-
-RMSE(results$Observed_values,results$Estimated_values)
-Rsquared(results$Observed_values,results$Estimated_values)
-MAE(results$Observed_values,results$Estimated_values)
-
-
-
+# plot(testing_data$wti, predictions, 
+#      main = "Actual vs. Predicted Values",
+#      xlab = "Actual Values",
+#      ylab = "Predicted Values")
+# 
+# 
+# abline(0, 1, col = "red")
+# 
+# ### second graph 
+# testing_data$predictions <- predict(nn3, newdata = testing_data)
+# 
+# # Create a time series plot of actual vs. predicted values
+# ggplot(testing_data, aes(x = index(testing_data))) +
+#   geom_line(aes(y = testing_data$wti, color = "Actual"), size = 1.2) +
+#   geom_line(aes(y = predictions, color = "Predicted"), size = 1.2) +
+#   labs(title = "Actual vs. Predicted Values Over Time",
+#        x = "Time",
+#        y = "Value") +
+#   scale_color_manual(values = c("Actual" = "blue", "Predicted" = "red")) +
+#   theme_minimal()
+# 
+# 
 
 
 
