@@ -105,6 +105,7 @@ subset_df<-subset_df[,-37,-38]
 ################function to replace missing value with mean value
 
 #end
+
 ################
 
 
@@ -160,48 +161,7 @@ MAE <- function (true_values,predictions) {
   
 }
 
-
-#----------------------------------------------------#
-
-#NARX model using MLTSP#####
-
-train_size <- floor(0.8 * nrow(subset_df_filled_xts))
-train_data <- subset_df_filled_xts[1:train_size,]
-test_data <- subset_df_filled_xts[(train_size + 1):nrow(subset_df_filled_xts),]
-ind_test = index(test_data)
-wti <- subset_df_filled_xts$wti
-gas <- subset_df_filled_xts$GP
-coal<- subset_df_filled_xts$coal
-
-
-factorwithout_RE <- subset_df_filled_xts[,c(1,3,4,5,6,7,8,9,10,12,13,14)]
-with_RE_fac <- subset_df_filled_xts[,c(1,3,
-                                       11,35,
-                                       15,16,
-                                       25,26,27,28,29,30,31,32,33,34,
-                                       17,18,19,20,21,22,23,24)]
-#predict without any variables
-
-
-#predict wti without RE factors *****###
-model_gp_without = narx(train_data$GP,SimpleLM, p = 2,xreg=factorwithout_RE)
-pred_gp_without = forecast(model_gp_without,xreg=factorwithout_RE[ind_test])
-plot(pred_gp_without$mean)
-lines(test_data$wti,col="red")
-
-#predict wti with RE factors *****##
-model_gp_with = narx(train_data$GP, SimpleLM, p = 2,xreg=with_RE_fac)
-pred_gp_with = forecast(model_gp_with,xreg=with_RE_fac[ind_test])
-plot(pred_gp_with$mean)
-lines(test_data$wti,col="red")
-
-
-
-RMSE(pred_gp_without$mean, test_data$GP)
-Rsquared(pred_gp_without$mean, test_data$GP)
-MAE(test_data$GP,pred_gp_without$mean)
-
-#NARX model using neuralnet####
+# NARX model using neuralnet for WTI####
 exoge <-subset_df_filled_xts[,-1]
 lag1_target <- lag(subset_df_filled_xts$wti, 1)
 colnames(lag1_target) <- "wti1"
@@ -224,7 +184,7 @@ train_idx <- 1:round(train_frac * n)
 test_idx <- (round(train_frac * n) + 1):n
 training_data <- maxmindata[train_idx,]
 testing_data <- maxmindata[test_idx,]
-##-------Define the NARX formula----------
+## Define the NARX formula#
 
 
 formula <- wti ~ wti1 + wti2 +GP+coal+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro factors
@@ -248,14 +208,12 @@ formula <- wti ~ wti1 + wti2+TEMP+co2_per_capita+#envt factors
 temp_test <- testing_data[,-1] # change this according to dependent variable
 
 
-## Choose the best model####
-
-
+### Choose the best model##
 
 grid <-  expand.grid(layer1 = c(1, 2,3),
                      layer2 = c(1, 2,3),
                      layer3 = c(1,2,3))
-###with all variables####
+###with all variables##
 nn <- train(formula, 
             data = training_data, 
             method = "neuralnet", 
@@ -269,7 +227,7 @@ nn <- train(formula,
 )
 
 
-### with macro variables####
+### with macro variables###
 nn1 <- train(formula, 
             data = training_data, 
             method = "neuralnet", 
@@ -282,7 +240,7 @@ nn1 <- train(formula,
               verboseIter = TRUE)
 )
 
-### with without macro economic factors ####
+### with without macro economic factors ###
 
 nn3 <- train(formula, 
              data = training_data, 
@@ -297,44 +255,189 @@ nn3 <- train(formula,
 )
 
 
-### plot the model #####
+### plot the model ###
 
-plot(nn3)
+plot(nn)
 
-tiff("nn.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
-plotnet(nn$finalModel,cex_val =0.5)
+tiff("nn3.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
+plotnet(nn3$finalModel,cex_val =0.5,"","WTI")
+title("Oil WTI")
+dev.off()
+
+
+#repeat for each model 
+predictions <-  predict(nn3, newdata = testing_data)
+tiff("pred_without_mac.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
+plot(testing_data$wti, predictions, 
+     main = "Actual vs. Predicted",
+     xlab = "Actual",
+     ylab = "Predicted")
+abline(0, 1, col = "red") 
 dev.off()
 
 
 
 
 
-# 
-# predictions <- predict(nn3, newdata = testing_data)
-# 
-# 
-# plot(testing_data$wti, predictions, 
-#      main = "Actual vs. Predicted Values",
-#      xlab = "Actual Values",
-#      ylab = "Predicted Values")
-# 
-# 
-# abline(0, 1, col = "red")
-# 
-# ### second graph 
-# testing_data$predictions <- predict(nn3, newdata = testing_data)
-# 
-# # Create a time series plot of actual vs. predicted values
-# ggplot(testing_data, aes(x = index(testing_data))) +
-#   geom_line(aes(y = testing_data$wti, color = "Actual"), size = 1.2) +
-#   geom_line(aes(y = predictions, color = "Predicted"), size = 1.2) +
-#   labs(title = "Actual vs. Predicted Values Over Time",
-#        x = "Time",
-#        y = "Value") +
-#   scale_color_manual(values = c("Actual" = "blue", "Predicted" = "red")) +
-#   theme_minimal()
-# 
-# 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# NARX model using neuralnet for OIL####
+exoge <-subset_df_filled_xts[,-2]
+lag1_target <- lag(subset_df_filled_xts$wti, 1)
+colnames(lag1_target) <- "wti1"
+lag2_target <- lag(subset_df_filled_xts$wti, 2)
+colnames(lag2_target) <- "wti2"
+time <- 1:6126
+wti<-subset_df_filled_xts$wti
+data <- data.frame(wti, exoge, lag1_target, lag2_target)
+data <- na.omit(data)
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+maxmindata <- as.data.frame(lapply(data, normalize))
+
+## Split the data into training and testing sets
+n<-6124
+train_frac <- 0.8
+train_idx <- 1:round(train_frac * n)
+test_idx <- (round(train_frac * n) + 1):n
+training_data <- maxmindata[train_idx,]
+testing_data <- maxmindata[test_idx,]
+## Define the NARX formula#
+
+
+formula <- wti ~ wti1 + wti2 +GP+coal+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro factors
+  TEMP+co2_per_capita+#envt factors
+  solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
+  bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
+  hydropowerLCOE+onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+#renewable factors
+  GR+EPI# political factors
+
+formula <- wti ~ wti1+wti2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH+#macro factors
+  GP+coal 
+
+formula <- wti ~ wti1 + wti2+TEMP+co2_per_capita+#envt factors
+  solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
+  bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
+  hydropowerLCOE+onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+#renewable factors
+  GR+EPI# political factors
+
+
+
+temp_test <- testing_data[,-1] # change this according to dependent variable
+
+
+### Choose the best model##
+
+grid <-  expand.grid(layer1 = c(1, 2,3),
+                     layer2 = c(1, 2,3),
+                     layer3 = c(1,2,3))
+###with all variables##
+nn <- train(formula, 
+            data = training_data, 
+            method = "neuralnet", 
+            tuneGrid = grid,
+            metric = "RMSE",
+            preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+            trControl = trainControl(
+              method = "cv",
+              number = 5,
+              verboseIter = TRUE)
+)
+
+
+### with macro variables###
+nn1 <- train(formula, 
+             data = training_data, 
+             method = "neuralnet", 
+             tuneGrid = grid,
+             metric = "RMSE",
+             preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+             trControl = trainControl(
+               method = "cv",
+               number = 5,
+               verboseIter = TRUE)
+)
+
+### with without macro economic factors ###
+
+nn3 <- train(formula, 
+             data = training_data, 
+             method = "neuralnet", 
+             tuneGrid = grid,
+             metric = "RMSE",
+             preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+             trControl = trainControl(
+               method = "cv",
+               number = 5,
+               verboseIter = TRUE)
+)
+
+
+### plot the model ###
+
+plot(nn)
+
+tiff("nn3.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
+plotnet(nn3$finalModel,cex_val =0.5,"","WTI")
+title("Oil WTI")
+dev.off()
+
+
+#repeat for each model 
+predictions <-  predict(nn3, newdata = testing_data)
+tiff("pred_without_mac.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
+plot(testing_data$wti, predictions, 
+     main = "Actual vs. Predicted",
+     xlab = "Actual",
+     ylab = "Predicted")
+abline(0, 1, col = "red") 
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -360,26 +463,6 @@ dev.off()
 
 
 
-
-
-# calculate_r_squared <- function(actual_values, predicted_values) {
-#   N <- length(actual_values)
-#   residuals <- actual_values - predicted_values
-#   ss_residuals <- sum(residuals^2)/N^2
-#   ss_total <- sum((actual_values - mean(actual_values))^2)/N
-#   r_squared <-  1-(((ss_residuals) / ss_total))
-#   return(r_squared)
-# }
-
-
-
-
-# M_A_D <- function(actual_values,predicted_values) {
-#   n <- length(actual_values)
-#   mean_abs_dev <- sum(abs(actual_values - predicted_values)) / n
-#   return(mean_abs_dev)
-# }
-# 
 
 
 
