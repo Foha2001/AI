@@ -186,13 +186,13 @@ training_data <- maxmindata[train_idx,]
 testing_data <- maxmindata[test_idx,]
 ## Define the NARX formula#
 
-
 formula <- wti ~ wti1 + wti2 +GP+coal+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro factors
   TEMP+co2_per_capita+#envt factors
   solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
   bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
   hydropowerLCOE+onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+#renewable factors
   GR+EPI# political factors
+
 
 formula <- wti ~ wti1+wti2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH+#macro factors
  GP+coal 
@@ -229,15 +229,15 @@ nn <- train(formula,
 
 ### with macro variables###
 nn1 <- train(formula, 
-            data = training_data, 
-            method = "neuralnet", 
-            tuneGrid = grid,
-            metric = "RMSE",
-            preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
-            trControl = trainControl(
-              method = "cv",
-              number = 5,
-              verboseIter = TRUE)
+             data = training_data, 
+             method = "neuralnet", 
+             tuneGrid = grid,
+             metric = "RMSE",
+             preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+             trControl = trainControl(
+               method = "cv",
+               number = 5,
+               verboseIter = TRUE)
 )
 
 ### with without macro economic factors ###
@@ -259,9 +259,9 @@ nn3 <- train(formula,
 
 plot(nn)
 
-tiff("nn3.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
-plotnet(nn3$finalModel,cex_val =0.5,"","WTI")
-title("Oil WTI")
+tiff("nn.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
+plotnet(nn$finalModel,cex_val =0.5,"","WTI")
+title("Oil wti")
 dev.off()
 
 
@@ -281,34 +281,15 @@ dev.off()
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # NARX model using neuralnet for OIL####
 exoge <-subset_df_filled_xts[,-2]
-lag1_target <- lag(subset_df_filled_xts$wti, 1)
-colnames(lag1_target) <- "wti1"
-lag2_target <- lag(subset_df_filled_xts$wti, 2)
-colnames(lag2_target) <- "wti2"
+lag1_target <- lag(subset_df_filled_xts$GP, 1)
+colnames(lag1_target) <- "gp1"
+lag2_target <- lag(subset_df_filled_xts$GP, 2)
+colnames(lag2_target) <- "gp2"
 time <- 1:6126
-wti<-subset_df_filled_xts$wti
-data <- data.frame(wti, exoge, lag1_target, lag2_target)
+GP<-subset_df_filled_xts$GP
+data <- data.frame(GP, exoge, lag1_target, lag2_target)
 data <- na.omit(data)
 normalize <- function(x) {
   return ((x - min(x)) / (max(x) - min(x)))
@@ -324,19 +305,19 @@ test_idx <- (round(train_frac * n) + 1):n
 training_data <- maxmindata[train_idx,]
 testing_data <- maxmindata[test_idx,]
 ## Define the NARX formula#
-
-
-formula <- wti ~ wti1 + wti2 +GP+coal+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro factors
+formula <- GP ~ gp1 + gp2 +wti+coal+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro factors
   TEMP+co2_per_capita+#envt factors
   solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
   bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
   hydropowerLCOE+onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+#renewable factors
   GR+EPI# political factors
 
-formula <- wti ~ wti1+wti2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH+#macro factors
+
+
+formula <- GP ~ gp1 + gp2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH+#macro factors
   GP+coal 
 
-formula <- wti ~ wti1 + wti2+TEMP+co2_per_capita+#envt factors
+formula <- GP ~ gp1 + gp2+TEMP+co2_per_capita+#envt factors
   solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
   bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
   hydropowerLCOE+onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+#renewable factors
@@ -352,62 +333,66 @@ temp_test <- testing_data[,-1] # change this according to dependent variable
 grid <-  expand.grid(layer1 = c(1, 2,3),
                      layer2 = c(1, 2,3),
                      layer3 = c(1,2,3))
+
 ###with all variables##
-nn <- train(formula, 
-            data = training_data, 
-            method = "neuralnet", 
-            tuneGrid = grid,
-            metric = "RMSE",
-            preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
-            trControl = trainControl(
-              method = "cv",
-              number = 5,
-              verboseIter = TRUE)
+nnGP <- train(formula, 
+              data = training_data, 
+              method = "neuralnet", 
+              tuneGrid = grid,
+              metric = "RMSE",
+              preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+              trControl = trainControl(
+                method = "cv",
+                number = 5,
+                verboseIter = TRUE)
 )
 
+nnGP  # find the best model
 
 ### with macro variables###
-nn1 <- train(formula, 
-             data = training_data, 
-             method = "neuralnet", 
-             tuneGrid = grid,
-             metric = "RMSE",
-             preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
-             trControl = trainControl(
-               method = "cv",
-               number = 5,
-               verboseIter = TRUE)
+nn1GP <- train(formula, 
+               data = training_data, 
+               method = "neuralnet", 
+               tuneGrid = grid,
+               metric = "RMSE",
+               preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+               trControl = trainControl(
+                 method = "cv",
+                 number = 5,
+                 verboseIter = TRUE)
+)
+nn1GP  # find the best model
+### without macro economic factors ###
+
+nn3GP <- train(formula, 
+               data = training_data, 
+               method = "neuralnet", 
+               tuneGrid = grid,
+               metric = "RMSE",
+               preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+               trControl = trainControl(
+                 method = "cv",
+                 number = 5,
+                 verboseIter = TRUE)
 )
 
-### with without macro economic factors ###
-
-nn3 <- train(formula, 
-             data = training_data, 
-             method = "neuralnet", 
-             tuneGrid = grid,
-             metric = "RMSE",
-             preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
-             trControl = trainControl(
-               method = "cv",
-               number = 5,
-               verboseIter = TRUE)
-)
+nn3GP
 
 
 ### plot the model ###
 
-plot(nn)
+plot(nnGP)  # for choosing the best model
 
-tiff("nn3.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
-plotnet(nn3$finalModel,cex_val =0.5,"","WTI")
-title("Oil WTI")
+tiff("nn3GP.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
+plotnet(nn3GP$finalModel,cex_val =0.5,"","GAS")
+title("GAS")
 dev.off()
 
 
 #repeat for each model 
-predictions <-  predict(nn3, newdata = testing_data)
-tiff("pred_without_mac.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
-plot(testing_data$wti, predictions, 
+predictions <-  predict(nn1GP, newdata = testing_data)
+tiff("pred_onlymacro.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
+plot(testing_data$GP, predictions, 
      main = "Actual vs. Predicted",
      xlab = "Actual",
      ylab = "Predicted")
