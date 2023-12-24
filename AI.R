@@ -1,6 +1,6 @@
 #--------Title:  Predicting energy commodity prices amidst -------------
 #-------worldwide energy transitions using deep learning models --
-
+##library#####
 library(readxl)
 library(xts)
 library(writexl)
@@ -19,6 +19,8 @@ library(neuralnet)
 library(zoo)
 library(caret)
 library(NeuralNetTools)
+library(tensorflow)
+library(reticulate)
 #************import data********************-----
 excel_file <- "C:/Users/Foued Azuz 14/OneDrive/AI energy/dataset.xlsx"
 sheet_names <- excel_sheets(excel_file)
@@ -161,6 +163,12 @@ MAE <- function (true_values,predictions) {
   
 }
 
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+#******************NARX model******************####
+
 # NARX model using neuralnet for WTI####
 exoge <-subset_df_filled_xts[,-1]
 lag1_target <- lag(subset_df_filled_xts$wti, 1)
@@ -171,9 +179,6 @@ time <- 1:6126
 wti<-subset_df_filled_xts$wti
 data <- data.frame(wti, exoge, lag1_target, lag2_target)
 data <- na.omit(data)
-normalize <- function(x) {
-  return ((x - min(x)) / (max(x) - min(x)))
-}
 
 maxmindata <- as.data.frame(lapply(data, normalize))
 
@@ -257,7 +262,12 @@ nn3 <- train(formula,
 
 ### plot the model ###
 
-plot(nn)
+
+tiff("nn.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+plot(nn3)
+dev.off()
+
+
 
 tiff("nn.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
 plotnet(nn$finalModel,cex_val =0.5,"","WTI")
@@ -291,9 +301,6 @@ time <- 1:6126
 GP<-subset_df_filled_xts$GP
 data <- data.frame(GP, exoge, lag1_target, lag2_target)
 data <- na.omit(data)
-normalize <- function(x) {
-  return ((x - min(x)) / (max(x) - min(x)))
-}
 
 maxmindata <- as.data.frame(lapply(data, normalize))
 
@@ -383,6 +390,12 @@ nn3GP
 
 plot(nnGP)  # for choosing the best model
 
+
+tiff("nn3GP.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+plot(nn3GP)
+dev.off()
+
+
 tiff("nn3GP.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
 plotnet(nn3GP$finalModel,cex_val =0.5,"","GAS")
 title("GAS")
@@ -399,40 +412,342 @@ plot(testing_data$GP, predictions,
 abline(0, 1, col = "red") 
 dev.off()
 
+# NARX model using neuralnet for Coal####
+exoge <-subset_df_filled_xts[,-3]
+lag1_target <- lag(subset_df_filled_xts$coal, 1)
+colnames(lag1_target) <- "coal1"
+lag2_target <- lag(subset_df_filled_xts$coal, 2)
+colnames(lag2_target) <- "coal2"
+time <- 1:6126
+coal<-subset_df_filled_xts$coal
+data <- data.frame(coal, exoge, lag1_target, lag2_target)
+data <- na.omit(data)
+
+maxmindata <- as.data.frame(lapply(data, normalize))
+
+## Split the data into training and testing sets
+n<-6124
+train_frac <- 0.8
+train_idx <- 1:round(train_frac * n)
+test_idx <- (round(train_frac * n) + 1):n
+training_data <- maxmindata[train_idx,]
+testing_data <- maxmindata[test_idx,]
+## Define the NARX formula#
+formula <- coal ~ coal1 + coal2 +wti+GP+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro factors
+  TEMP+co2_per_capita+#envt factors
+  solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
+  bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
+  hydropowerLCOE+onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+#renewable factors
+  GR+EPI# political factors
 
 
 
+formula <- coal ~ coal1 + coal2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH+#macro factors
+  GP+coal 
+
+formula <- coal ~ coal1 + coal2+TEMP+co2_per_capita+#envt factors
+  solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
+  bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
+  hydropowerLCOE+onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+#renewable factors
+  GR+EPI# political factors
 
 
 
+### Choose the best model##
+
+grid <-  expand.grid(layer1 = c(1, 2,3),
+                     layer2 = c(1, 2,3),
+                     layer3 = c(1,2,3))
+
+###with all variables##
+nncoal <- train(formula, 
+              data = training_data, 
+              method = "neuralnet", 
+              tuneGrid = grid,
+              metric = "RMSE",
+              preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+              trControl = trainControl(
+                method = "cv",
+                number = 5,
+                verboseIter = TRUE)
+)
+
+nncoal  # find the best model
 
 
 
+### with macro variables###
+nn1coal <- train(formula, 
+               data = training_data, 
+               method = "neuralnet", 
+               tuneGrid = grid,
+               metric = "RMSE",
+               preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+               trControl = trainControl(
+                 method = "cv",
+                 number = 5,
+                 verboseIter = TRUE)
+)
+nn1coal  # find the best model
+### without macro economic factors ###
+nn3coal <- train(formula, 
+               data = training_data, 
+               method = "neuralnet", 
+               tuneGrid = grid,
+               metric = "RMSE",
+               preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+               trControl = trainControl(
+                 method = "cv",
+                 number = 5,
+                 verboseIter = TRUE)
+)
+
+nn3coal
+
+### plot the model ###
+
+
+tiff("nn3coal.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+plot(nn3coal)
+dev.off()
+
+tiff("nn3coal.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
+plotnet(nn3coal$finalModel,cex_val =0.5,"","Coal")
+title("Coal")
+dev.off()
+
+
+#repeat for each model 
+predictions <-  predict(nn1coal, newdata = testing_data)
+tiff("pred.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
+plot(testing_data$coal, predictions, 
+     main = "Actual vs. Predicted",
+     xlab = "Actual",
+     ylab = "Predicted")
+abline(0, 1, col = "red") 
+dev.off()
+
+#**********************ANN*****************************####
+#*
+# ANN model using neuralnet for WTI####
+wti <- subset_df_filled_xts[,1]
+lagged_data <- embed(wti, 5)
+input_data <- lagged_data[, -5 ]
+output_data <- lagged_data[, 5]
+ann_data <- data.frame(input_data, output_data)
+ann_datascale <- as.data.frame(lapply(ann_data, normalize))
+
+#train the model
+n<-6122
+train_frac <- 0.8
+train_idx <- 1:round(train_frac * n)
+test_idx <- (round(train_frac * n) + 1):n
+training_data <- ann_datascale[train_idx,]
+testing_data <- ann_datascale[test_idx,]
+
+grid <-  expand.grid(layer1 = c(1, 2,3),
+                     layer2 = c(1, 2,3),
+                     layer3 = c(1,2,3))
+
+
+formula <- output_data ~ X1+X2+X3+X4
+  
+
+ann <- train(formula, 
+                data = training_data, 
+                method = "neuralnet", 
+                tuneGrid = grid,
+                metric = "RMSE",
+                preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+                trControl = trainControl(
+                  method = "cv",
+                  number = 5,
+                  verboseIter = TRUE)
+)
+ann
 
 
 
+# ANN model using neuralnet for oil####
+gp <- subset_df_filled_xts[,2]
+lagged_data <- embed(gp, 5)
+input_data <- lagged_data[, -5 ]
+output_data <- lagged_data[, 5]
+ann_data <- data.frame(input_data, output_data)
+ann_datascale <- as.data.frame(lapply(ann_data, normalize))
+
+#train the model
+n<-6122
+train_frac <- 0.8
+train_idx <- 1:round(train_frac * n)
+test_idx <- (round(train_frac * n) + 1):n
+training_data <- ann_datascale[train_idx,]
+testing_data <- ann_datascale[test_idx,]
+
+grid <-  expand.grid(layer1 = c(1, 2,3),
+                     layer2 = c(1, 2,3),
+                     layer3 = c(1,2,3))
 
 
+formula <- output_data ~ X1+X2+X3+X4
+
+#ann for oil
+ann1 <- train(formula, 
+              data = training_data, 
+              method = "neuralnet", 
+              tuneGrid = grid,
+              metric = "RMSE",
+              preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+              trControl = trainControl(
+                method = "cv",
+                number = 5,
+                verboseIter = TRUE)
+)
+ann1
 
 
+# ANN model using neuralnet for coal####
+coal <- subset_df_filled_xts[,3]
+lagged_data <- embed(coal, 5)
+input_data <- lagged_data[, -5 ]
+output_data <- lagged_data[, 5]
+ann_data <- data.frame(input_data, output_data)
+ann_datascale <- as.data.frame(lapply(ann_data, normalize))
+
+#train the model
+n<-6122
+train_frac <- 0.8
+train_idx <- 1:round(train_frac * n)
+test_idx <- (round(train_frac * n) + 1):n
+training_data <- ann_datascale[train_idx,]
+testing_data <- ann_datascale[test_idx,]
+
+grid <-  expand.grid(layer1 = c(1, 2,3),
+                     layer2 = c(1, 2,3),
+                     layer3 = c(1,2,3))
 
 
+formula <- output_data ~ X1+X2+X3+X4
+
+#ann for coal
+ann2 <- train(formula, 
+              data = training_data, 
+              method = "neuralnet", 
+              tuneGrid = grid,
+              metric = "RMSE",
+              preProc = c("center", "scale", "nzv"), #good idea to do this with neural nets - your error is due to non scaled data
+              trControl = trainControl(
+                method = "cv",
+                number = 5,
+                verboseIter = TRUE)
+)
+ann2
 
 
+#**********************LSTM********************************####
+#LSTM for WTI####
+wti_diff =as.numeric(diff(wti, differences = 1))
+lag_transform <- function(x, k= 1){
+  
+  lagged =  c(rep(NA, k), x[1:(length(x)-k)])
+  DF = as.data.frame(cbind(lagged, x))
+  colnames(DF) <- c( paste0('x-', k), 'x')
+  DF[is.na(DF)] <- 0
+  return(DF)
+}
+supervised = lag_transform(wti_diff, 1)
+N = nrow(supervised)
+n = round(N *0.7, digits = 0)
+train = supervised[1:n, ]
+test  = supervised[(n+1):N,  ]
+scale_data = function(train, test, feature_range = c(0, 1)) {
+  x = train
+  fr_min = feature_range[1]
+  fr_max = feature_range[2]
+  std_train = ((x - min(x) ) / (max(x) - min(x)  ))
+  std_test  = ((test - min(x) ) / (max(x) - min(x)  ))
+  
+  scaled_train = std_train *(fr_max -fr_min) + fr_min
+  scaled_test = std_test *(fr_max -fr_min) + fr_min
+  
+  return( list(scaled_train = as.vector(scaled_train), scaled_test = as.vector(scaled_test) ,scaler= c(min =min(x), max = max(x))) )
+  
+}
 
+Scaled = scale_data(train, test, c(-1, 1))
 
+y_train = Scaled[["scaled_train"]][["x"]]
+x_train = Scaled[["scaled_train"]][["x-1"]]
 
+y_test =Scaled[["scaled_test"]][["x"]]
+x_test =Scaled[["scaled_test"]][["x-1"]]
 
+invert_scaling = function(scaled, scaler, feature_range = c(0, 1)){
+  min = scaler[1]
+  max = scaler[2]
+  t = length(scaled)
+  mins = feature_range[1]
+  maxs = feature_range[2]
+  inverted_dfs = numeric(t)
+  
+  for( i in 1:t){
+    X = (scaled[i]- mins)/(maxs - mins)
+    rawValues = X *(max - min) + min
+    inverted_dfs[i] <- rawValues
+  }
+  return(inverted_dfs)
+}
+dim(x_train) <- c(length(x_train), 1, 1)
 
+X_shape2 = dim(x_train)[2]
+X_shape3 = dim(x_train)[3]
+batch_size = 1                # must be a common factor of both the train and test samples
+units = 1     
+model <- keras_model_sequential()
+
+model%>%
+  layer_lstm(units, batch_input_shape = c(batch_size, X_shape2, X_shape3), stateful= TRUE)%>%
+  layer_dense(units = 1)
+
+model %>% compile(
+  loss = 'mean_squared_error',
+  optimizer = optimizer_adam(),  
+  metrics = c('accuracy')
+)
+summary(model)
+
+Epochs = 50   
+for(i in 1:Epochs ){
+  model %>% fit(x_train, y_train, epochs=1, batch_size=batch_size, verbose=1, shuffle=FALSE)
+  model %>% reset_states()
+}
+
+L = length(x_test)
+scaler = Scaled$scaler
+predictions = numeric(L)
+
+for(i in 1:L){
+  X = x_test[i]
+  dim(X) = c(1,1,1)
+  yhat = model %>% predict(X, batch_size=batch_size)
+  # invert scaling
+  yhat = invert_scaling(yhat, scaler,  c(-1, 1))
+  # invert differencing
+  yhat  = yhat + wti[(n+i)]
+  # store
+  predictions[i] <- yhat
+}
+
+combin <- cbind(as.numeric(wti),predictions)
+colnames(combin) <-c("actual","predictions")
+combin <- as.data.frame(combin)
+
+rmse <- sqrt(mean((combin$actual - combin$predictions)^2))
+mae <- mean(abs(combin$actual - combin$predictions))
+r <- cor(combin$predictions,combin$actual)
 
 
 #---------------------------------END---------------------------------------------
-
-
-
-
-
-
 
 
 
