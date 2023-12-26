@@ -645,8 +645,12 @@ ann2
 
 
 #**********************LSTM********************************####
-#LSTM for WTI####
+#LSTM for WTI, Gp and coal  change each name accordingly ####
 wti_diff =as.numeric(diff(wti, differences = 1))
+gp_diff <- as.numeric(diff(gp, differences = 1))
+coal_diff <- as.numeric(diff(coal, differences = 1))
+
+
 lag_transform <- function(x, k= 1){
   
   lagged =  c(rep(NA, k), x[1:(length(x)-k)])
@@ -655,9 +659,9 @@ lag_transform <- function(x, k= 1){
   DF[is.na(DF)] <- 0
   return(DF)
 }
-supervised = lag_transform(wti_diff, 1)
+supervised = lag_transform(coal_diff, 1)
 N = nrow(supervised)
-n = round(N *0.7, digits = 0)
+n = round(N *0.8, digits = 0)
 train = supervised[1:n, ]
 test  = supervised[(n+1):N,  ]
 scale_data = function(train, test, feature_range = c(0, 1)) {
@@ -733,12 +737,12 @@ for(i in 1:L){
   # invert scaling
   yhat = invert_scaling(yhat, scaler,  c(-1, 1))
   # invert differencing
-  yhat  = yhat + wti[(n+i)]
+  yhat  = yhat + coal[(n+i)]
   # store
   predictions[i] <- yhat
 }
 
-combin <- cbind(as.numeric(wti),predictions)
+combin <- cbind(as.numeric(coal),predictions)
 colnames(combin) <-c("actual","predictions")
 combin <- as.data.frame(combin)
 
@@ -746,11 +750,56 @@ rmse <- sqrt(mean((combin$actual - combin$predictions)^2))
 mae <- mean(abs(combin$actual - combin$predictions))
 r <- cor(combin$predictions,combin$actual)
 
+#second method for LSTM
+library(TSLSTM)
+TSLSTM<-ts.lstm(ts=wti,tsLag=2,xregLag = 0,LSTMUnits=5, Epochs=50,CompLoss = "mse")
+#*****************xgboost**********************####
+wtiB <- data.frame(Date = index(wti), test$wti)
+wtiBoost <- wtiB %>%
+  mutate(Lag1 = lag(wti),
+         Lag2 = lag(wti, 2))
+wtiBoost <- na.omit(wtiBoost)
+
+train_size <- 0.8
+train_index <- 1:(train_size * nrow(wtiBoost))
+
+train_data <- wtiBoost[train_index, ]
+test_data <- wtiBoost[-train_index, ]
+
+
+
+# Train the XGBoost Model
+params <- list(
+  objective = "reg:squarederror",  # Regression task
+  eval_metric = "rmse"  # Root Mean Squared Error as the evaluation metric
+)
+
+label_column <- as.numeric(train_data$wti)
+features <- as.matrix(train_data[, c("Lag1", "Lag2")])
+dtrain <- xgb.DMatrix(data = features, label = label_column)
+
+# Train the model
+model <- xgboost(data = dtrain, params = params, nrounds = 100)
+
+predictions <- predict(model, xgb.DMatrix(as.matrix(test_data[, c("Lag1", "Lag2")])))
+
+# Evaluate the Model
+rmse <- sqrt(mean((predictions - test_data$wti)^2))
+cat("Root Mean Squared Error:", rmse, "\n")
+
+
+
+
+
+
+
+
+
+
+
+
 
 #---------------------------------END---------------------------------------------
-
-
-
 
 
 
