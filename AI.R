@@ -753,9 +753,17 @@ r <- cor(combin$predictions,combin$actual)
 #second method for LSTM
 library(TSLSTM)
 TSLSTM<-ts.lstm(ts=wti,tsLag=2,xregLag = 0,LSTMUnits=5, Epochs=50,CompLoss = "mse")
+
+
+
 #*****************xgboost**********************####
-wtiB <- data.frame(Date = index(wti), test$wti)
-wtiBoost <- wtiB %>%
+##for WTI####
+#------------------------------------------******************
+wtiB <- subset_df_xts$wti
+wtiB <-na.omit(wtiB)
+wtidf <- as.data.frame(wtiB)
+wtidf$date <- index(wtiB)
+wtiBoost <- wtidf %>%
   mutate(Lag1 = lag(wti),
          Lag2 = lag(wti, 2))
 wtiBoost <- na.omit(wtiBoost)
@@ -766,8 +774,6 @@ train_index <- 1:(train_size * nrow(wtiBoost))
 train_data <- wtiBoost[train_index, ]
 test_data <- wtiBoost[-train_index, ]
 
-
-
 # Train the XGBoost Model
 params <- list(
   objective = "reg:squarederror",  # Regression task
@@ -777,6 +783,74 @@ params <- list(
 label_column <- as.numeric(train_data$wti)
 features <- as.matrix(train_data[, c("Lag1", "Lag2")])
 dtrain <- xgb.DMatrix(data = features, label = label_column)
+# Train the model
+model <- xgboost(data = dtrain, params = params, nrounds = 100)
+
+predictions <- predict(model, xgb.DMatrix(as.matrix(test_data[, c("Lag1", "Lag2")])))
+
+# Evaluate the Model
+RMSE(predictions,test_data$wti)
+MAE(predictions,test_data$wti)
+Rsquared(predictions,test_data$wti)
+
+
+#plot predictions#
+wtiB <- subset_df_xts$wti
+split_index <- floor(0.8 * nrow(wtiB)+1)
+wtiB$predict <- 0
+wtiB$predict[(split_index + 1):nrow(wtiB)] <- predictions
+wtiB <-na.omit(wtiB)
+wtidf <- as.data.frame(wtiB)
+wtidf$date <- index(wtiB)
+colnames(wtidf) <- c("Actual","prediction","Date")
+
+
+df <- wtidf %>%
+  gather(key = "Variable", value = "value", -Date) %>% 
+  filter(value!=0)
+
+tiff("xgboost_pred_wti.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+
+ggplot(df, aes(x = Date, y = value)) + 
+  geom_line(aes(color = Variable), size = 1)+
+  scale_color_manual(values = c("black", "red")) +
+  theme(legend.position = c(0.1, 0.80))+
+  labs(color = "Actual vs Prediction")+
+  theme(panel.background = element_blank())+
+  theme(axis.line.x = element_line(colour = 'black', size=0.5, linetype='solid'),
+        axis.line.y = element_line(colour = 'black', size=0.5, linetype='solid'))
+dev.off()
+
+
+## for GAS####
+#------------------------------------------******************
+
+GPB <- subset_df_xts$GP
+GPB <-na.omit(GPB)
+GPdf <- as.data.frame(GPB)
+GPdf$date <- index(GPB)
+GPBoost <- GPdf %>%
+  mutate(Lag1 = lag(GP),
+         Lag2 = lag(GP, 2))
+GPBoost <- na.omit(GPBoost)
+
+train_size <- 0.8
+train_index <- 1:(train_size * nrow(GPBoost))
+
+train_data <- GPBoost[train_index, ]
+test_data <- GPBoost[-train_index, ]
+
+
+
+# Train the XGBoost Model
+params <- list(
+  objective = "reg:squarederror",  # Regression task
+  eval_metric = "rmse"  # Root Mean Squared Error as the evaluation metric
+)
+
+label_column <- as.numeric(train_data$GP)
+features <- as.matrix(train_data[, c("Lag1", "Lag2")])
+dtrain <- xgb.DMatrix(data = features, label = label_column)
 
 # Train the model
 model <- xgboost(data = dtrain, params = params, nrounds = 100)
@@ -784,19 +858,108 @@ model <- xgboost(data = dtrain, params = params, nrounds = 100)
 predictions <- predict(model, xgb.DMatrix(as.matrix(test_data[, c("Lag1", "Lag2")])))
 
 # Evaluate the Model
-rmse <- sqrt(mean((predictions - test_data$wti)^2))
-cat("Root Mean Squared Error:", rmse, "\n")
+RMSE(predictions,test_data$GP)
+MAE(predictions,test_data$GP)
+Rsquared(predictions,test_data$GP)
+
+#plot predictions#
+GPB <- subset_df_xts$GP
+split_index <- floor(0.8 * nrow(GPB)+1)
+GPB$predict <- 0
+GPB$predict[(split_index + 1):nrow(GPB)] <- predictions
+GPB <-na.omit(GPB)
+GPdf <- as.data.frame(GPB)
+GPdf$date <- index(GPB)
+colnames(GPdf) <- c("Actual","prediction","Date")
+
+
+df <- GPdf %>%
+  gather(key = "Variable", value = "value", -Date) %>% 
+  filter(value!=0)
+
+tiff("xgboost_pred_GP.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+
+ggplot(df, aes(x = Date, y = value)) + 
+  geom_line(aes(color = Variable), size = 1)+
+  scale_color_manual(values = c("black", "red")) +
+  theme(legend.position = c(0.1, 0.80))+
+  labs(color = "Actual vs Prediction")+
+  theme(panel.background = element_blank())+
+  theme(axis.line.x = element_line(colour = 'black', size=0.5, linetype='solid'),
+        axis.line.y = element_line(colour = 'black', size=0.5, linetype='solid'))
+
+dev.off()
 
 
 
 
 
+##for coal#####
+#------------------------------------------******************
+coalB <- subset_df_xts$coal
+coalB <-na.omit(coalB)
+coaldf <- as.data.frame(coalB)
+coaldf$date <- index(coalB)
+coalBoost <- coaldf %>%
+  mutate(Lag1 = lag(coal),
+         Lag2 = lag(coal, 2))
+coalBoost <- na.omit(coalBoost)
+
+train_size <- 0.8
+train_index <- 1:(train_size * nrow(coalBoost))
+
+train_data <- coalBoost[train_index, ]
+test_data <- coalBoost[-train_index, ]
 
 
 
+# Train the XGBoost Model
+params <- list(
+  objective = "reg:squarederror",  # Regression task
+  eval_metric = "rmse"  # Root Mean Squared Error as the evaluation metric
+)
+
+label_column <- as.numeric(train_data$coal)
+features <- as.matrix(train_data[, c("Lag1", "Lag2")])
+dtrain <- xgb.DMatrix(data = features, label = label_column)
+
+# Train the model
+model <- xgboost(data = dtrain, params = params, nrounds = 100)
+
+predictions <- predict(model, xgb.DMatrix(as.matrix(test_data[, c("Lag1", "Lag2")])))
+
+# Evaluate the Model
+RMSE(predictions,test_data$coal)
+MAE(predictions,test_data$coal)
+Rsquared(predictions,test_data$coal)
+
+#plot predictions#
+coalB <- subset_df_xts$coal
+split_index <- floor(0.8 * nrow(coalB)+1)
+coalB$predict <- 0
+coalB$predict[(split_index + 1):nrow(coalB)] <- predictions
+coalB <-na.omit(coalB)
+coaldf <- as.data.frame(coalB)
+coaldf$date <- index(coalB)
+colnames(coaldf) <- c("Actual","prediction","Date")
 
 
+df <- coaldf %>%
+  gather(key = "Variable", value = "value", -Date) %>% 
+  filter(value!=0)
 
+tiff("xgboost_pred_coal.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+
+ggplot(df, aes(x = Date, y = value)) + 
+  geom_line(aes(color = Variable), size = 1)+
+scale_color_manual(values = c("black", "red")) +
+  theme(legend.position = c(0.1, 0.80))+
+  labs(color = "Actual vs Prediction")+
+  theme(panel.background = element_blank())+
+  theme(axis.line.x = element_line(colour = 'black', size=0.5, linetype='solid'),
+        axis.line.y = element_line(colour = 'black', size=0.5, linetype='solid'))
+
+dev.off()
 
 
 #---------------------------------END---------------------------------------------
