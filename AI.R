@@ -77,57 +77,47 @@ subset_df_xts<-as.xts(subset_df)
 
 
 #replace missing values with the values in the end of year  repeate for every column
-zoogeothermal<-zoo(subset_df[, "geothermal"],
-                              order.by = subset_df$date)
-filled_zoogeothermal <- na.locf(zoogeothermal,
-                                           fromLast = TRUE)
-filled_df <- data.frame(Date = index(filled_zoogeothermal), 
-                        geothermal = 
-                          coredata(filled_zoogeothermal))
-colnames(filled_df)<-c("date","geothermal")
 
-subset_df <- merge(subset_df, filled_df, by = "date", all.x = TRUE)
-subset_df$geothermal.x<- NULL
-subset_df$geothermal<-subset_df$geothermal.y
-subset_df$geothermal.y<- NULL
+fill_and_merge <- function(df, variable_name) {
+  zoo_variable <- zoo(df[, variable_name], order.by = df$date)
+  filled_zoo_variable <- na.locf(zoo_variable, fromLast = TRUE)
+  
+  filled_df <- data.frame(Date = index(filled_zoo_variable), 
+                          value = coredata(filled_zoo_variable))
+  colnames(filled_df) <- c("date", variable_name)
+  
+  df <- merge(df, filled_df, by = "date", all.x = TRUE)
+  col_to_remove <- paste(variable_name, ".x", sep = "")
+  df[[col_to_remove]] <- NULL
+  col_to_rename <- variable_name
+  df[[col_to_rename]] <- df[[paste(variable_name, ".y", sep = "")]]
+  df[[paste(variable_name, ".y", sep = "")]] <- NULL
+  
+  return(df)
+}
 
-copysubset_df<-subset_df
+variables_list <- c("solarthermal", "solarpvthermalhybrid", "solarpv","wind",
+                    "hydropower", "marineandtidal","bioenergy","geothermal",
+                    "bioenergyLCOE","geothermalLCOE",	"offshorewindLCOE",
+                    "solarphotovoltaicLCOE","concentratedsolarLCOE",
+                    "hydropowerLCOE","onshorewindLCOE", "AC_HYD_E",
+                    "AC_SOLAR_E","AC_WIND_E","GR","EPI","TEMP",
+                    "EEPH","co2_per_capita",
+                    "TB","LTY","I","SRV","GOP","GIPIO","M2","IPI","UMP")
+
+
+for (variable in variables_list) {
+  subset_df <- fill_and_merge(subset_df, variable)
+}
+
 #end
-#replace for missing month
-
-subset_df <- subset_df %>%
-  mutate(date = as.Date(date, format = "%Y-%m-%d")) %>%
-  group_by(year = format(date, "%Y"), month = format(date, "%m")) %>%
-  mutate(UMP = ifelse(is.na(UMP), first(UMP, na_rm = TRUE), UMP)) %>%
-  ungroup()
-
-subset_df<-subset_df[,-37,-38]
 
 
-################function to replace missing value with mean value
-
-#end
 
 ################
 
-
-my_function <- function(column) {
-  column <- ifelse(is.na(column), mean(column, na.rm = TRUE), column)
-  return(column)
-}
-
-subset_df_filled <- lapply(subset_df, function(x) {
-  if(is.numeric(x)) {
-    # Apply the function only to numeric columns
-    return(my_function(x))
-  } else {
-    # For non-numeric columns, return them as is
-    return(x)
-  }
-})
-subset_df_filled <- as.data.frame(subset_df_filled)
-subset_df_filled_xts <- as.xts(subset_df_filled)
-mytable <- desc(subset_df_filled_xts)
+subset_df_xts <- as.xts(subset_df)
+mytable <- desc(subset_df_xts)
 export(mytable)
 
 
@@ -167,18 +157,27 @@ normalize <- function(x) {
   return ((x - min(x)) / (max(x) - min(x)))
 }
 
+inverse_normalize <- function(y, original_data) {
+  min_original <- min(original_data)
+  max_original <- max(original_data)
+  return (y * (max_original - min_original) + min_original)
+}
+
+
+
 #******************NARX model******************####
 
 # NARX model using neuralnet for WTI####
-exoge <-subset_df_filled_xts[,-1]
-lag1_target <- lag(subset_df_filled_xts$wti, 1)
+
+exoge <-subset_df_xts[,-1]
+lag1_target <- lag(subset_df_xts$wti, 1)
 colnames(lag1_target) <- "wti1"
-lag2_target <- lag(subset_df_filled_xts$wti, 2)
+lag2_target <- lag(subset_df_xts$wti, 2)
 colnames(lag2_target) <- "wti2"
 time <- 1:6126
-wti<-subset_df_filled_xts$wti
+wti<-subset_df_xts$wti
 data <- data.frame(wti, exoge, lag1_target, lag2_target)
-data <- na.omit(data)
+
 
 maxmindata <- as.data.frame(lapply(data, normalize))
 
@@ -530,23 +529,25 @@ dev.off()
 #**********************ANN*****************************####
 #*
 # ANN model using neuralnet for WTI####
-wti <- subset_df_filled_xts[,1]
+#------------------------------------------******************
+
+wti <- subset_df_xts[,1]
+wti <- na.omit(wti)
 lagged_data <- embed(wti, 5)
 input_data <- lagged_data[, -5 ]
 output_data <- lagged_data[, 5]
 ann_data <- data.frame(input_data, output_data)
 ann_datascale <- as.data.frame(lapply(ann_data, normalize))
-
 #train the model
-n<-6122
+n<-4215
 train_frac <- 0.8
 train_idx <- 1:round(train_frac * n)
 test_idx <- (round(train_frac * n) + 1):n
 training_data <- ann_datascale[train_idx,]
 testing_data <- ann_datascale[test_idx,]
 
-grid <-  expand.grid(layer1 = c(1, 2,3),
-                     layer2 = c(1, 2,3),
+grid <-  expand.grid(layer1 = c(1,2,3),
+                     layer2 = c(1,2,3),
                      layer3 = c(1,2,3))
 
 
@@ -565,11 +566,41 @@ ann <- train(formula,
                   verboseIter = TRUE)
 )
 ann
+#prepare for plot
+predict <- predict(ann, testing_data)
+revpredict <- inverse_normalize(predict,ann_data$output_data)
+wtiB <- subset_df_xts$wti
+wtiB <- na.omit(wti)
+split_index <- floor(0.8 * nrow(wtiB)+1)
+wtiB$predict <- 0
+wtiB$predict[(split_index + 1):nrow(wtiB)] <- revpredict
+wtidf <- as.data.frame(wtiB)
+wtidf$date <- index(wtiB)
+colnames(wtidf) <- c("Actual","prediction","Date")
+
+df <- wtidf %>%
+  gather(key = "Variable", value = "value", -Date) %>%
+  filter(value!=0)
+
+tiff("ANN_pred_wti.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+
+ggplot(df, aes(x = Date, y = value)) +
+  geom_line(aes(color = Variable), size = 1)+
+  scale_color_manual(values = c("black", "red")) +
+  theme(legend.position = c(0.1, 0.80))+
+  labs(color = "Actual vs Prediction")+
+  theme(panel.background = element_blank())+
+  theme(axis.line.x = element_line(colour = 'black', size=0.5, linetype='solid'),
+        axis.line.y = element_line(colour = 'black', size=0.5, linetype='solid'))
+
+dev.off()
 
 
+# ANN model using neuralnet for gas####
+#------------------------------------------******************
 
-# ANN model using neuralnet for oil####
-gp <- subset_df_filled_xts[,2]
+gp <- subset_df_xts[,2]
+gp <-na.omit(gp)
 lagged_data <- embed(gp, 5)
 input_data <- lagged_data[, -5 ]
 output_data <- lagged_data[, 5]
@@ -577,7 +608,7 @@ ann_data <- data.frame(input_data, output_data)
 ann_datascale <- as.data.frame(lapply(ann_data, normalize))
 
 #train the model
-n<-6122
+n<-length(ann_datascale$output_data)
 train_frac <- 0.8
 train_idx <- 1:round(train_frac * n)
 test_idx <- (round(train_frac * n) + 1):n
@@ -591,7 +622,7 @@ grid <-  expand.grid(layer1 = c(1, 2,3),
 
 formula <- output_data ~ X1+X2+X3+X4
 
-#ann for oil
+#ann for gas
 ann1 <- train(formula, 
               data = training_data, 
               method = "neuralnet", 
@@ -605,9 +636,40 @@ ann1 <- train(formula,
 )
 ann1
 
+#prepare for plot
+predict <- predict(ann1, testing_data)
+revpredict <- inverse_normalize(predict,ann_data$output_data)
+GPB <- subset_df_xts$GP
+GPB <- na.omit(GPB)
+split_index <- floor(0.8 * nrow(GPB)+1)
+GPB$predict <- 0
+GPB$predict[(split_index + 1):nrow(GPB)] <- revpredict
+GPdf <- as.data.frame(GPB)
+GPdf$date <- index(GPB)
+colnames(GPdf) <- c("Actual","prediction","Date")
+
+df <- GPdf %>%
+  gather(key = "Variable", value = "value", -Date) %>%
+  filter(value!=0)
+
+tiff("ANN_pred_GP.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+
+ggplot(df, aes(x = Date, y = value)) +
+  geom_line(aes(color = Variable), size = 1)+
+  scale_color_manual(values = c("black", "red")) +
+  theme(legend.position = c(0.1, 0.80))+
+  labs(color = "Actual vs Prediction")+
+  theme(panel.background = element_blank())+
+  theme(axis.line.x = element_line(colour = 'black', size=0.5, linetype='solid'),
+        axis.line.y = element_line(colour = 'black', size=0.5, linetype='solid'))
+
+dev.off()
+
+
 
 # ANN model using neuralnet for coal####
-coal <- subset_df_filled_xts[,3]
+coal <- subset_df_xts[,3]
+coal <- na.omit(coal)
 lagged_data <- embed(coal, 5)
 input_data <- lagged_data[, -5 ]
 output_data <- lagged_data[, 5]
@@ -615,7 +677,7 @@ ann_data <- data.frame(input_data, output_data)
 ann_datascale <- as.data.frame(lapply(ann_data, normalize))
 
 #train the model
-n<-6122
+n<-length(ann_datascale$output_data)
 train_frac <- 0.8
 train_idx <- 1:round(train_frac * n)
 test_idx <- (round(train_frac * n) + 1):n
@@ -643,13 +705,46 @@ ann2 <- train(formula,
 )
 ann2
 
+#prepare for plot
+predict <- predict(ann2, testing_data)
+revpredict <- inverse_normalize(predict,ann_data$output_data)
+coalB <- subset_df_xts$coal
+coalB <- na.omit(coalB)
+split_index <- floor(0.8 * nrow(coalB)+1)
+coalB$predict <- 0
+coalB$predict[(split_index + 1):nrow(coalB)] <- revpredict
+coaldf <- as.data.frame(coalB)
+coaldf$date <- index(coalB)
+colnames(coaldf) <- c("Actual","prediction","Date")
+
+df <- coaldf %>%
+  gather(key = "Variable", value = "value", -Date) %>%
+  filter(value!=0)
+
+tiff("ANN_pred_coal.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+
+ggplot(df, aes(x = Date, y = value)) +
+  geom_line(aes(color = Variable), size = 1)+
+  scale_color_manual(values = c("black", "red")) +
+  theme(legend.position = c(0.1, 0.80))+
+  labs(color = "Actual vs Prediction")+
+  theme(panel.background = element_blank())+
+  theme(axis.line.x = element_line(colour = 'black', size=0.5, linetype='solid'),
+        axis.line.y = element_line(colour = 'black', size=0.5, linetype='solid'))
+
+dev.off()
+
 
 #**********************LSTM********************************####
 #LSTM for WTI, Gp and coal  change each name accordingly ####
+wti <- subset_df_xts[,1]
 wti_diff =as.numeric(diff(wti, differences = 1))
+gp <- subset_df_xts[,2]
+coal <- subset_df_xts[,3]
+gp <- na.omit(gp)
 gp_diff <- as.numeric(diff(gp, differences = 1))
 coal_diff <- as.numeric(diff(coal, differences = 1))
-
+----------------------------"fill the code"--------------------------------------------
 
 lag_transform <- function(x, k= 1){
   
@@ -659,7 +754,7 @@ lag_transform <- function(x, k= 1){
   DF[is.na(DF)] <- 0
   return(DF)
 }
-supervised = lag_transform(coal_diff, 1)
+supervised = lag_transform(wti_diff, 1)
 N = nrow(supervised)
 n = round(N *0.8, digits = 0)
 train = supervised[1:n, ]
@@ -737,22 +832,60 @@ for(i in 1:L){
   # invert scaling
   yhat = invert_scaling(yhat, scaler,  c(-1, 1))
   # invert differencing
-  yhat  = yhat + coal[(n+i)]
+  yhat  = yhat + wti[(n+i)]
   # store
   predictions[i] <- yhat
 }
+----------------------------"end of code"-----------------------------------
 
-combin <- cbind(as.numeric(coal),predictions)
+
+# plot predictions vs actual
+act_pred <- wti[(n+1):N,] # find the original value equivalent to predictions
+combin <- cbind(act_pred,predictions)
 colnames(combin) <-c("actual","predictions")
 combin <- as.data.frame(combin)
+combin <- na.omit(combin)
 
 rmse <- sqrt(mean((combin$actual - combin$predictions)^2))
 mae <- mean(abs(combin$actual - combin$predictions))
 r <- cor(combin$predictions,combin$actual)
+#repeate before running code
+act_pred <- wti[(n+1):N,] # find the original value equivalent to predictions
+combin <- cbind(act_pred,predictions)
+colnames(combin) <-c("actual","predictions")
+combin <- as.data.frame(combin)
+wti <- subset_df_xts[,1]
+
+split_index <- floor(0.8 * nrow(wti)+1)
+wti$predict <- 0
+wti$predict[(split_index + 1):nrow(wti)] <- predictions
+wtidf <- as.data.frame(wti)
+wtidf$date <- index(wti)
+colnames(wtidf) <- c("Actual","prediction","Date")
+wtidf <- na.omit(wtidf)
+
+df <- wtidf %>%
+  gather(key = "Variable", value = "value", -Date) %>%
+  filter(value!=0)
+
+tiff("LSTM_pred_wti.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+
+ggplot(df, aes(x = Date, y = value)) +
+  geom_line(aes(color = Variable), size = 1)+
+  scale_color_manual(values = c("black", "red")) +
+  theme(legend.position = c(0.1, 0.80))+
+  labs(color = "Actual vs Prediction")+
+  theme(panel.background = element_blank())+
+  theme(axis.line.x = element_line(colour = 'black', size=0.5, linetype='solid'),
+        axis.line.y = element_line(colour = 'black', size=0.5, linetype='solid'))
+
+dev.off()
+
+
 
 #second method for LSTM
 library(TSLSTM)
-TSLSTM<-ts.lstm(ts=wti,tsLag=2,xregLag = 0,LSTMUnits=5, Epochs=50,CompLoss = "mse")
+TSLSTM<-ts.lstm(ts=GP,tsLag=2,xregLag = 0,LSTMUnits=5, Epochs=5,CompLoss = "mse")
 
 
 
@@ -966,9 +1099,31 @@ dev.off()
 
 
 
+# #replace for missing month
+# 
+# subset_df <- subset_df %>%
+#   mutate(date = as.Date(date, format = "%Y-%m-%d")) %>%
+#   group_by(year = format(date, "%Y"), month = format(date, "%m")) %>%
+#   mutate(UMP = ifelse(is.na(UMP), first(UMP, na_rm = TRUE), UMP)) %>%
+#   ungroup()
+# 
+# subset_df<-subset_df[,-37,-38]
 
-
-
+# 
+# my_function <- function(column) {
+#   column <- ifelse(is.na(column), mean(column, na.rm = TRUE), column)
+#   return(column)
+# }
+# 
+# subset_df_filled <- lapply(subset_df, function(x) {
+#   if(is.numeric(x)) {
+#     # Apply the function only to numeric columns
+#     return(my_function(x))
+#   } else {
+#     # For non-numeric columns, return them as is
+#     return(x)
+#   }
+# })
 
 
 
