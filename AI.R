@@ -5,7 +5,6 @@ library(readxl)
 library(xts)
 library(writexl)
 library(xgboost)
-library(nnet)
 library(stats)
 library(dplyr)
 library(tidyr)
@@ -21,6 +20,7 @@ library(caret)
 library(NeuralNetTools)
 library(tensorflow)
 library(reticulate)
+library(tidyr)
 #************import data********************-----
 excel_file <- "C:/Users/Foued Azuz 14/OneDrive/AI energy/dataset.xlsx"
 sheet_names <- excel_sheets(excel_file)
@@ -65,7 +65,7 @@ theme(panel.background = element_blank())+
 
 
 
-#------------prepare the dataset correct missing value--------------####
+#------------prepare the dataset for missing value--------------####
 column_names <- colnames(merged_df)
 start_date <- as.Date("2006-10-16")
 end_date <- as.Date("2023-07-24")
@@ -73,10 +73,8 @@ mask <- merged_df$date >= start_date & merged_df$date <= end_date
 subset_df <- merged_df[mask, ]
 subset_df_xts<-as.xts(subset_df)
 
-#Replace missing value#####
+##Replace missing value#####
 
-
-#replace missing values with the values in the end of year  repeate for every column
 
 fill_and_merge <- function(df, variable_name) {
   zoo_variable <- zoo(df[, variable_name], order.by = df$date)
@@ -114,7 +112,7 @@ for (variable in variables_list) {
 
 
 
-################
+#export summary statistics####
 
 subset_df_xts <- as.xts(subset_df)
 mytable <- desc(subset_df_xts)
@@ -177,30 +175,31 @@ colnames(lag2_target) <- "wti2"
 time <- 1:6126
 wti<-subset_df_xts$wti
 data <- data.frame(wti, exoge, lag1_target, lag2_target)
-
+data <- data[complete.cases(data$wti), ] #delete missing value dor wti only
+data[] <- lapply(data, function(x) ifelse(is.na(x), mean(x, na.rm = TRUE), x))# replace NA with mean value
 
 maxmindata <- as.data.frame(lapply(data, normalize))
 
 ## Split the data into training and testing sets
-n<-6124
+n<-length(maxmindata$wti)
 train_frac <- 0.8
 train_idx <- 1:round(train_frac * n)
 test_idx <- (round(train_frac * n) + 1):n
 training_data <- maxmindata[train_idx,]
 testing_data <- maxmindata[test_idx,]
 ## Define the NARX formula#
-
-formula <- wti ~ wti1 + wti2 +GP+coal+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro factors
+## for all factors
+formula <- wti ~ wti1 + wti2 + TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro factors
   TEMP+co2_per_capita+#envt factors
   solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
   bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
   hydropowerLCOE+onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+#renewable factors
   GR+EPI# political factors
-
+## for macro variables
 
 formula <- wti ~ wti1+wti2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH+#macro factors
  GP+coal 
-
+## for RE EVNT factors only
 formula <- wti ~ wti1 + wti2+TEMP+co2_per_capita+#envt factors
   solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
   bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
@@ -209,7 +208,7 @@ formula <- wti ~ wti1 + wti2+TEMP+co2_per_capita+#envt factors
 
 
 
-temp_test <- testing_data[,-1] # change this according to dependent variable
+# temp_test <- testing_data[,-1] # change this according to dependent variable
 
 
 ### Choose the best model##
@@ -229,7 +228,7 @@ nn <- train(formula,
               number = 5,
               verboseIter = TRUE)
 )
-
+nn
 
 ### with macro variables###
 nn1 <- train(formula, 
@@ -243,8 +242,9 @@ nn1 <- train(formula,
                number = 5,
                verboseIter = TRUE)
 )
+nn1
 
-### with without macro economic factors ###
+### with only RE factors ###
 
 nn3 <- train(formula, 
              data = training_data, 
@@ -261,57 +261,83 @@ nn3 <- train(formula,
 
 ### plot the model ###
 
-
-tiff("nn.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+#plot for best hidden layers
+tiff("nn3.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
 plot(nn3)
 dev.off()
 
 
-
-tiff("nn.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
-plotnet(nn$finalModel,cex_val =0.5,"","WTI")
+#plot neural diagram
+tiff("diagram.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
+plotnet(nn3$finalModel,cex_val =0.5,"","WTI")
 title("Oil wti")
 dev.off()
 
 
-#repeat for each model 
+#plot predictions vs actual
 predictions <-  predict(nn3, newdata = testing_data)
-tiff("pred_without_mac.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
+tiff("pred_wti_RE.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
 plot(testing_data$wti, predictions, 
      main = "Actual vs. Predicted",
      xlab = "Actual",
      ylab = "Predicted")
 abline(0, 1, col = "red") 
 dev.off()
+# plot predictions and actual
+
+data_xts <- as.xts(data)
+maxmindata_xts <-lapply(data_xts, normalize)
+wti_xts <- xts(maxmindata_xts$wti, order.by = index(maxmindata_xts[["wti"]]))
+wti_xts$predictions <- 0
+wti_xts$predictions[test_idx,] <- predictions
+wtidf <- as.data.frame(wti_xts)
+wtidf$Date <- index(wti_xts)
+colnames(wtidf) <- c("Actual","prediction","Date")
+
+df <- wtidf %>%
+  gather(key = "Variable", value = "value", -Date) %>%
+  filter(value!=0)
+
+tiff("NARX_wti_RE.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+
+ggplot(df, aes(x = Date, y = value)) +
+  geom_line(aes(color = Variable), size = 1)+
+  scale_color_manual(values = c("black", "red")) +
+  theme(legend.position = c(0.1, 0.80))+
+  labs(color = "Actual vs Prediction")+
+  theme(panel.background = element_blank())+
+  theme(axis.line.x = element_line(colour = 'black', size=0.5, linetype='solid'),
+        axis.line.y = element_line(colour = 'black', size=0.5, linetype='solid'))
+
+dev.off()
 
 
 
 
-
-
-
-# NARX model using neuralnet for OIL####
-exoge <-subset_df_filled_xts[,-2]
-lag1_target <- lag(subset_df_filled_xts$GP, 1)
-colnames(lag1_target) <- "gp1"
-lag2_target <- lag(subset_df_filled_xts$GP, 2)
-colnames(lag2_target) <- "gp2"
+# NARX model using neuralnet for gas####
+exoge <-subset_df_xts[,-2]
+lag1_target <- lag(subset_df_xts$GP, 1)
+colnames(lag1_target) <- "GP1"
+lag2_target <- lag(subset_df_xts$GP, 2)
+colnames(lag2_target) <- "GP2"
 time <- 1:6126
-GP<-subset_df_filled_xts$GP
+GP<-subset_df_xts$GP
 data <- data.frame(GP, exoge, lag1_target, lag2_target)
-data <- na.omit(data)
-
+data <- data[complete.cases(data$GP), ] #delete missing value dor wti only
+data[] <- lapply(data, function(x) ifelse(is.na(x), mean(x, na.rm = TRUE), x))# replace NA with mean value
 maxmindata <- as.data.frame(lapply(data, normalize))
 
 ## Split the data into training and testing sets
-n<-6124
+n<-length(maxmindata$GP)
 train_frac <- 0.8
 train_idx <- 1:round(train_frac * n)
 test_idx <- (round(train_frac * n) + 1):n
 training_data <- maxmindata[train_idx,]
 testing_data <- maxmindata[test_idx,]
 ## Define the NARX formula#
-formula <- GP ~ gp1 + gp2 +wti+coal+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro factors
+
+## for all factors
+formula <- GP ~ GP1 + GP2 + TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro factors
   TEMP+co2_per_capita+#envt factors
   solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
   bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
@@ -319,20 +345,17 @@ formula <- GP ~ gp1 + gp2 +wti+coal+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro
   GR+EPI# political factors
 
 
+## for macro variables
+formula <- GP ~ GP1 + GP2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH#macro factors
+  
 
-formula <- GP ~ gp1 + gp2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH+#macro factors
-  GP+coal 
 
-formula <- GP ~ gp1 + gp2+TEMP+co2_per_capita+#envt factors
+## for RE EVNT factors only
+formula <- GP ~ GP1 + GP2+TEMP+co2_per_capita+#envt factors
   solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
   bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
   hydropowerLCOE+onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+#renewable factors
   GR+EPI# political factors
-
-
-
-temp_test <- testing_data[,-1] # change this according to dependent variable
-
 
 ### Choose the best model##
 
@@ -368,7 +391,7 @@ nn1GP <- train(formula,
                  verboseIter = TRUE)
 )
 nn1GP  # find the best model
-### without macro economic factors ###
+### Using only political RE factors ###
 
 nn3GP <- train(formula, 
                data = training_data, 
@@ -387,7 +410,7 @@ nn3GP
 
 ### plot the model ###
 
-plot(nnGP)  # for choosing the best model
+plot(nn3GP)  # for choosing the best model
 
 
 tiff("nn3GP.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
@@ -401,9 +424,9 @@ title("GAS")
 dev.off()
 
 
-#repeat for each model 
-predictions <-  predict(nn1GP, newdata = testing_data)
-tiff("pred_onlymacro.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
+# plot predictions vs actual
+predictions <-  predict(nn3GP, newdata = testing_data)
+tiff("pred_re.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
 plot(testing_data$GP, predictions, 
      main = "Actual vs. Predicted",
      xlab = "Actual",
@@ -411,28 +434,60 @@ plot(testing_data$GP, predictions,
 abline(0, 1, col = "red") 
 dev.off()
 
+# plot predictions and actual
+
+data_xts <- as.xts(data)
+maxmindata_xts <-lapply(data_xts, normalize)
+GP_xts <- xts(maxmindata_xts$GP, order.by = index(maxmindata_xts[["GP"]]))
+GP_xts$predictions <- 0
+GP_xts$predictions[test_idx,] <- predictions
+GPdf <- as.data.frame(GP_xts)
+GPdf$Date <- index(GP_xts)
+colnames(GPdf) <- c("Actual","prediction","Date")
+
+df <- GPdf %>%
+  gather(key = "Variable", value = "value", -Date) %>%
+  filter(value!=0)
+
+tiff("NARX_GP_re.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+
+ggplot(df, aes(x = Date, y = value)) +
+  geom_line(aes(color = Variable), size = 1)+
+  scale_color_manual(values = c("black", "red")) +
+  theme(legend.position = c(0.1, 0.80))+
+  labs(color = "Actual vs Prediction")+
+  theme(panel.background = element_blank())+
+  theme(axis.line.x = element_line(colour = 'black', size=0.5, linetype='solid'),
+        axis.line.y = element_line(colour = 'black', size=0.5, linetype='solid'))
+
+dev.off()
+
+
+
 # NARX model using neuralnet for Coal####
-exoge <-subset_df_filled_xts[,-3]
-lag1_target <- lag(subset_df_filled_xts$coal, 1)
+exoge <-subset_df_xts[,-3]
+lag1_target <- lag(subset_df_xts$coal, 1)
 colnames(lag1_target) <- "coal1"
-lag2_target <- lag(subset_df_filled_xts$coal, 2)
+lag2_target <- lag(subset_df_xts$coal, 2)
 colnames(lag2_target) <- "coal2"
 time <- 1:6126
-coal<-subset_df_filled_xts$coal
+coal<-subset_df_xts$coal
 data <- data.frame(coal, exoge, lag1_target, lag2_target)
-data <- na.omit(data)
-
+data <- data[complete.cases(data$coal), ]
+data[] <- lapply(data, function(x) ifelse(is.na(x), mean(x, na.rm = TRUE), x))# replace NA with mean value
 maxmindata <- as.data.frame(lapply(data, normalize))
 
+
 ## Split the data into training and testing sets
-n<-6124
+n<-length(maxmindata$coal)
 train_frac <- 0.8
 train_idx <- 1:round(train_frac * n)
 test_idx <- (round(train_frac * n) + 1):n
 training_data <- maxmindata[train_idx,]
 testing_data <- maxmindata[test_idx,]
 ## Define the NARX formula#
-formula <- coal ~ coal1 + coal2 +wti+GP+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro factors
+## for all factors
+formula <- coal ~ coal1 + coal2 + TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#macro factors
   TEMP+co2_per_capita+#envt factors
   solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
   bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
@@ -440,11 +495,13 @@ formula <- coal ~ coal1 + coal2 +wti+GP+ TB+LTY+SRV+GOP+GIPIO+M2+IPI+UMP+EEPH+#m
   GR+EPI# political factors
 
 
+## for macro variables
+formula <- coal ~ coal1 + coal2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH#macro factors
 
-formula <- coal ~ coal1 + coal2+TB+LTY+I+SRV+GOP+GIPIO+M2+IPI+UMP+ EEPH+#macro factors
-  GP+coal 
 
-formula <- coal ~ coal1 + coal2+TEMP+co2_per_capita+#envt factors
+
+## for RE EVNT factors only
+formula <- coal ~ coal1 + coal2 +TEMP+co2_per_capita+#envt factors
   solarpv+solarthermal+solarpvthermalhybrid+wind+hydropower+marineandtidal+bioenergy+geothermal+#technological factors
   bioenergyLCOE+geothermalLCOE+ offshorewindLCOE+solarphotovoltaicLCOE+concentratedsolarLCOE+
   hydropowerLCOE+onshorewindLCOE+AC_WIND_E+AC_SOLAR_E+AC_HYD_E+#renewable factors
@@ -506,25 +563,63 @@ nn3coal
 ### plot the model ###
 
 
-tiff("nn3coal.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
-plot(nn3coal)
+tiff("nncoal.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+plot(nncoal)
 dev.off()
 
-tiff("nn3coal.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
-plotnet(nn3coal$finalModel,cex_val =0.5,"","Coal")
+tiff("nncoal.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
+plotnet(nncoal$finalModel,cex_val =0.5,"","Coal")
 title("Coal")
 dev.off()
 
+# plot predictions vs actual
 
-#repeat for each model 
-predictions <-  predict(nn1coal, newdata = testing_data)
-tiff("pred.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
+predictions <-  predict(nncoal, newdata = testing_data)
+tiff("predcoalall.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
 plot(testing_data$coal, predictions, 
      main = "Actual vs. Predicted",
      xlab = "Actual",
      ylab = "Predicted")
 abline(0, 1, col = "red") 
 dev.off()
+
+
+
+# plot predictions and actual
+
+data_xts <- as.xts(data)
+maxmindata_xts <-lapply(data_xts, normalize)
+coal_xts <- xts(maxmindata_xts$coal, order.by = index(maxmindata_xts[["coal"]]))
+coal_xts$predictions <- 0
+coal_xts$predictions[test_idx,] <- predictions
+coaldf <- as.data.frame(coal_xts)
+coaldf$Date <- index(coal_xts)
+colnames(coaldf) <- c("Actual","prediction","Date")
+
+df <- coaldf %>%
+  gather(key = "Variable", value = "value", -Date) %>%
+  filter(value!=0)
+
+tiff("NARX_coal_all.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+
+ggplot(df, aes(x = Date, y = value)) +
+  geom_line(aes(color = Variable), size = 1)+
+  scale_color_manual(values = c("black", "red")) +
+  theme(legend.position = c(0.1, 0.80))+
+  labs(color = "Actual vs Prediction")+
+  theme(panel.background = element_blank())+
+  theme(axis.line.x = element_line(colour = 'black', size=0.5, linetype='solid'),
+        axis.line.y = element_line(colour = 'black', size=0.5, linetype='solid'))
+
+dev.off()
+
+
+
+
+
+
+
+
 
 #**********************ANN*****************************####
 #*
@@ -1110,20 +1205,20 @@ dev.off()
 # subset_df<-subset_df[,-37,-38]
 
 # 
-# my_function <- function(column) {
-#   column <- ifelse(is.na(column), mean(column, na.rm = TRUE), column)
-#   return(column)
-# }
-# 
-# subset_df_filled <- lapply(subset_df, function(x) {
-#   if(is.numeric(x)) {
-#     # Apply the function only to numeric columns
-#     return(my_function(x))
-#   } else {
-#     # For non-numeric columns, return them as is
-#     return(x)
-#   }
-# })
+my_function <- function(column) {
+  column <- ifelse(is.na(column), mean(column, na.rm = TRUE), column)
+  return(column)
+}
+
+datad <- lapply(data, function(x) {
+  if(is.numeric(x)) {
+    # Apply the function only to numeric columns
+    return(my_function(x))
+  } else {
+    # For non-numeric columns, return them as is
+    return(x)
+  }
+})
 
 
 
