@@ -21,6 +21,7 @@ library(NeuralNetTools)
 library(tensorflow)
 library(reticulate)
 library(tidyr)
+library(forecast)
 #************import data********************-----
 excel_file <- "C:/Users/Foued Azuz 14/OneDrive/AI energy/dataset.xlsx"
 sheet_names <- excel_sheets(excel_file)
@@ -275,7 +276,7 @@ dev.off()
 
 
 #plot predictions vs actual
-predictions <-  predict(nn3, newdata = testing_data)
+predictions <-  predict(nn, newdata = testing_data)
 tiff("pred_wti_RE.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
 plot(testing_data$wti, predictions, 
      main = "Actual vs. Predicted",
@@ -425,7 +426,7 @@ dev.off()
 
 
 # plot predictions vs actual
-predictions <-  predict(nn3GP, newdata = testing_data)
+predictions <-  predict(nnGP, newdata = testing_data)
 tiff("pred_re.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
 plot(testing_data$GP, predictions, 
      main = "Actual vs. Predicted",
@@ -545,7 +546,7 @@ nn1coal <- train(formula,
                  verboseIter = TRUE)
 )
 nn1coal  # find the best model
-### without macro economic factors ###
+### with only RE political factors###
 nn3coal <- train(formula, 
                data = training_data, 
                method = "neuralnet", 
@@ -563,19 +564,19 @@ nn3coal
 ### plot the model ###
 
 
-tiff("nncoal.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
-plot(nncoal)
+tiff("nn3coal.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+plot(nn3coal)
 dev.off()
 
-tiff("nncoal.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
-plotnet(nncoal$finalModel,cex_val =0.5,"","Coal")
+tiff("nn3coal.jpg",width = 10, height = 10, units = 'in', res = 350) #for high resolution
+plotnet(nn3coal$finalModel,cex_val =0.5,"","Coal")
 title("Coal")
 dev.off()
 
 # plot predictions vs actual
 
-predictions <-  predict(nncoal, newdata = testing_data)
-tiff("predcoalall.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
+predictions <-  predict(nn3coal, newdata = testing_data)
+tiff("predcoalre.jpg",width = 10, height = 5, units = 'in', res = 350) #for high resolution
 plot(testing_data$coal, predictions, 
      main = "Actual vs. Predicted",
      xlab = "Actual",
@@ -600,7 +601,7 @@ df <- coaldf %>%
   gather(key = "Variable", value = "value", -Date) %>%
   filter(value!=0)
 
-tiff("NARX_coal_all.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
+tiff("NARX_coal_re.jpg",width = 10, height = 6, units = 'in', res = 350) #for high resolution
 
 ggplot(df, aes(x = Date, y = value)) +
   geom_line(aes(color = Variable), size = 1)+
@@ -839,7 +840,7 @@ coal <- subset_df_xts[,3]
 gp <- na.omit(gp)
 gp_diff <- as.numeric(diff(gp, differences = 1))
 coal_diff <- as.numeric(diff(coal, differences = 1))
-----------------------------"fill the code"--------------------------------------------
+##----------------------------"fill the code"--------------------------------------------
 
 lag_transform <- function(x, k= 1){
   
@@ -849,7 +850,7 @@ lag_transform <- function(x, k= 1){
   DF[is.na(DF)] <- 0
   return(DF)
 }
-supervised = lag_transform(wti_diff, 1)
+supervised = lag_transform(gp_diff, 1)
 N = nrow(supervised)
 n = round(N *0.8, digits = 0)
 train = supervised[1:n, ]
@@ -918,7 +919,7 @@ for(i in 1:Epochs ){
 
 L = length(x_test)
 scaler = Scaled$scaler
-predictions = numeric(L)
+predictions_gp = numeric(L)
 
 for(i in 1:L){
   X = x_test[i]
@@ -929,17 +930,18 @@ for(i in 1:L){
   # invert differencing
   yhat  = yhat + wti[(n+i)]
   # store
-  predictions[i] <- yhat
+  predictions_gp[i] <- yhat
 }
-----------------------------"end of code"-----------------------------------
+#----------------------------"end of code"-----------------------------------
 
 
 # plot predictions vs actual
 act_pred <- wti[(n+1):N,] # find the original value equivalent to predictions
-combin <- cbind(act_pred,predictions)
-colnames(combin) <-c("actual","predictions")
+combin <- cbind(act_pred,predictions_gp)
+colnames(combin) <-c("actual","predictions_gp")
 combin <- as.data.frame(combin)
 combin <- na.omit(combin)
+
 
 rmse <- sqrt(mean((combin$actual - combin$predictions)^2))
 mae <- mean(abs(combin$actual - combin$predictions))
@@ -980,7 +982,7 @@ dev.off()
 
 #second method for LSTM
 library(TSLSTM)
-TSLSTM<-ts.lstm(ts=GP,tsLag=2,xregLag = 0,LSTMUnits=5, Epochs=5,CompLoss = "mse")
+TSLSTM<-ts.lstm(ts=wti,tsLag=2,xregLag = 0,LSTMUnits=5, Epochs=5,CompLoss = "mse")
 
 
 
@@ -1083,18 +1085,18 @@ dtrain <- xgb.DMatrix(data = features, label = label_column)
 # Train the model
 model <- xgboost(data = dtrain, params = params, nrounds = 100)
 
-predictions <- predict(model, xgb.DMatrix(as.matrix(test_data[, c("Lag1", "Lag2")])))
+predictions_xgboost_gp <- predict(model, xgb.DMatrix(as.matrix(test_data[, c("Lag1", "Lag2")])))
 
 # Evaluate the Model
-RMSE(predictions,test_data$GP)
-MAE(predictions,test_data$GP)
-Rsquared(predictions,test_data$GP)
+RMSE(predictions_xgboost_gp,test_data$GP)
+MAE(predictions_xgboost_gp,test_data$GP)
+Rsquared(predictions_xgboost_gp,test_data$GP)
 
 #plot predictions#
 GPB <- subset_df_xts$GP
 split_index <- floor(0.8 * nrow(GPB)+1)
 GPB$predict <- 0
-GPB$predict[(split_index + 1):nrow(GPB)] <- predictions
+GPB$predict[(split_index + 1):nrow(GPB)] <- predictions_xgboost_gp
 GPB <-na.omit(GPB)
 GPdf <- as.data.frame(GPB)
 GPdf$date <- index(GPB)
@@ -1190,35 +1192,45 @@ scale_color_manual(values = c("black", "red")) +
 dev.off()
 
 
+
+
+#***********camparing accuracy difference***********************####
+
+#repeate all previous codes before running this code 
+wtidf$error <- (wtidf$Actual-wtidf$prediction)^2
+wtidf <- wtidf[test_idx,]
+
+
+
+squaerror_wti_narx <- wtidf$error
+squaerror_wti_ann <- wtidf$error
+
+squaerror_wti_lstm <- wtidf$errorz
+squaerror_gp_lstm <- (combin$actual-combin$predictions_gp)^2
+
+
+
+
+GPdf$error <-(GPdf$Actual-GPdf$prediction)^2
+GPdf <- GPdf[test_idx,]
+
+
+squaerror_GP_narx <- GPdf$error  
+squaerror_GP_ann <- GPdf$error 
+squaerror_GP_xgboost <- GPdf$error 
+
+
+
+
+#repeat for each test 
+dm.test(squaerror_GP_narx,squaerror_GP_xgboost,alternative = "less",
+        h = 1, power = 2)
+
+
+
+
+
 #---------------------------------END---------------------------------------------
-
-
-
-# #replace for missing month
-# 
-# subset_df <- subset_df %>%
-#   mutate(date = as.Date(date, format = "%Y-%m-%d")) %>%
-#   group_by(year = format(date, "%Y"), month = format(date, "%m")) %>%
-#   mutate(UMP = ifelse(is.na(UMP), first(UMP, na_rm = TRUE), UMP)) %>%
-#   ungroup()
-# 
-# subset_df<-subset_df[,-37,-38]
-
-# 
-my_function <- function(column) {
-  column <- ifelse(is.na(column), mean(column, na.rm = TRUE), column)
-  return(column)
-}
-
-datad <- lapply(data, function(x) {
-  if(is.numeric(x)) {
-    # Apply the function only to numeric columns
-    return(my_function(x))
-  } else {
-    # For non-numeric columns, return them as is
-    return(x)
-  }
-})
 
 
 
