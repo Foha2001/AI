@@ -1868,25 +1868,89 @@ ggplot(df, aes(x = Date, y = value)) +
 dev.off()
 
 
+#---------------AUTOML using h2o-------------------------------
+
+library(h2o)
+h2o.init()
+library(writexl)
+dataauto <- maxmindata[,-c(36:39)]
+write_xlsx(dataauto, "dataauto.xlsx")
+#convert to cvs
+library(readxl)
+files.to.read <- list.files(pattern = "dataauto.xlsx")
+# Read each file and write it to CSV
+lapply(files.to.read, function(f) {
+  df <- read_excel(f, sheet = 1)
+  write.csv(df, gsub("dataauto.xlsx", "dataauto.csv", f), row.names = FALSE)
+})
+
+dataauto <- h2o.importFile("dataauto.csv")
+split <- h2o.splitFrame(dataauto, ratios = c(0.8))
+train <- split[[1]]
+test <- split[[2]]
+
+# Define the predictor and response variables
+x <- setdiff(names(dataauto[,-3]), c("response_variable"))
+y <- "wti"
 
 
 
+# # Train AutoML
 
+
+automl_fit <- h2o.automl(
+  x = x,
+  y = y,
+  training_frame = train,
+  max_models = 10,  # Optional: Maximum number of models to evaluate
+  max_runtime_secs = 3600  # Optional: Maximum training time in seconds
+)
+
+predictions <- h2o.predict(automl_fit, test)
+print(predictions, n=100)
+actual_values <- as.data.frame(test$wti)
+
+predicted_values <- as.data.frame(predictions$predict)
+comparison <- cbind(actual_values, predicted_values)
+
+# Calculate evaluation metrics
+accuracy <- mean(comparison$coal == comparison$predict)
+mse <- mean((comparison$wti - comparison$predict)^2)
+mae <- MAE1(comparison$wti,comparison$predict)
+rmse <-RMSE(comparison$wti,comparison$predict)
+squared <-Rsquared(comparison$wti,comparison$predict)
+
+
+library(performance)
+m <- lm(wti~.,maxmindata)
+check_model(m)
+check_normality(m)
+check_autocorrelation(m)
+
+#---------------AUTOML using autoML package-------------------------------
+MAE1 <- function (true_values,predictions) {
+  
+  abs_diff <- abs((true_values - predictions))
+  mad <- mean(abs_diff)
+  cat("Mean Absolute Deviation (MAD):", mad, "\n") 
+  
+}
+library(automl)
+dataauto <- maxmindata[,-c(36:39)]
+xmat <- dataauto[,-3]
+ymat<- dataauto[,3]
+amlmodel <- automl_train(Xref = xmat, Yref = ymat)
+res <- cbind(ymat, automl_predict(model = amlmodel, X = xmat))
+colnames(res) <- c('actual', 'predict')
+res <- as.data.frame(res)
+
+mae <- MAE1(res$actual,res$predict)
+rmse <-RMSE(res$actual,res$predict)
+squared <-Rsquared(res$actual,res$predict)
+
+#---------------AUTOML using autokeras package-------------------------------
 
 
 
 
 #---------------------------------END---------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
- 
