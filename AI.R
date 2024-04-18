@@ -1948,7 +1948,78 @@ mae <- MAE1(res$actual,res$predict)
 rmse <-RMSE(res$actual,res$predict)
 squared <-Rsquared(res$actual,res$predict)
 
+#----------------autoML using prophet-----------------------
+library(prophet)
+data <- subset_df_filled[,c(1:2)]
+colnames(data)<- c("ds","y")
+m <- prophet(data.frame(ds = data$ds, y = data$y), fit = FALSE)
+m <- fit.prophet(m)
+
+future <- make_future_dataframe(m, periods = 365, freq = "day")  # Adjust the number of periods as needed
+
+
+
+
+
+
 #---------------AUTOML using autokeras package-------------------------------
+# Load required libraries
+library(autokeras)
+
+
+# Load the dataset
+data <- maxmindata[,-c(36,39)]
+# Prepare the data
+
+
+# 
+# library(dplyr)
+# data <- data %>%
+#   arrange(Date) %>%
+#   mutate(
+#     Lag1 = lag(wti, 1),
+#     Lag2 = lag(wti, 2),
+#     Lag3 = lag(wti, 3)
+#   ) %>%
+#   na.omit()
+
+
+
+# Split data into training and validation sets
+split_index <- floor(0.8 * nrow(data))
+train_data <- data[1:split_index, ]
+test_data <- data[(split_index + 1):nrow(data),]
+
+
+# wti will be the interest column to predict
+
+
+train_file <- paste0(tempdir(),"/trainfile.csv")
+write.csv(train_data, train_file, row.names = FALSE)
+
+# file to predict,
+test_file_to_predict <- paste0(tempdir(), "/testfile.csv")
+write.csv(test_data[, -1], test_file_to_predict, row.names = FALSE)
+
+test_file_to_eval <- paste0(tempdir(), "/fileevaluate.csv")
+write.csv(test_data, test_file_to_eval, row.names = FALSE)
+
+library(autokeras)
+library(dplyr)
+# Initialize the structured data regressor
+reg <- model_structured_data_regressor(max_trials = 10) %>% # It tries 10 different models
+  fit(train_file, "coal")
+
+(predicted_y <- reg %>% predict(test_file_to_predict))
+reg %>% evaluate(test_file_to_eval, "coal")
+export_model(reg)
+
+
+
+
+
+
+
 
 
 
