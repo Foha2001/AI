@@ -92,4 +92,4 @@ doi={10.1177/01956574251340012}
 
 For questions or collaborations:
 	•	Foued Hamouda – foha2001@gmail.com
-	•	Paper [DOI]([https://journals.sagepub.com/doi/10.1177/01956574251340012)
+	•	Paper [DOI](https://journals.sagepub.com/doi/10.1177/01956574251340012)
