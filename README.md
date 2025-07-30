@@ -92,4 +92,4 @@ doi={10.1177/01956574251340012}
 
 For questions or collaborations:
 	•	Foued Hamouda – foha2001@gmail.com
-	•	Paper DOI
+	•	Paper [DOI](https://link.springer.com/article/10.1007/s10614-024-10573-w)
